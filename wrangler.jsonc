@@ -1,0 +1,47 @@
+{
+  // The site's Cloudflare configuration.
+  //
+  // One Worker does everything: it serves the built site out of `dist/` and
+  // answers the API the panel and the public pages call. There is no separate
+  // front-end host and no separate API host, which is what lets the whole site
+  // live on one domain — and therefore on the club's own domain.
+  //
+  // The three services it uses are all on the free plan at this site's size:
+  // static assets (unlimited requests), D1 (the event library, a few kilobytes)
+  // and R2 (uploaded photographs).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dku-ai-club",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-09-01",
+
+  // `directory` is relative to this file, so it is the Vite build output.
+  // Files are served straight from Cloudflare's edge; anything without a
+  // matching file falls through to the Worker below, which is how `/api/*`
+  // and `/media/*` are reached.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dku-ai-club",
+      // A placeholder so `wrangler dev` can run against a local database
+      // without an account. `wrangler d1 create dku-ai-club` prints the real id
+      // to paste here before the first deploy.
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "dku-ai-club-images"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

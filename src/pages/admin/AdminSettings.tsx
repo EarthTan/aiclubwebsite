@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, KeyRound, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { saveSettings, replaceSiteKey } from '@/lib/data'
-import { fileToOptimisedDataUrl } from '@/lib/image'
+import { saveSettings, replaceSiteKey, storeImage } from '@/lib/data'
 import { useSite } from '@/lib/store'
 import type { SiteSettings } from '@/lib/types'
 
@@ -37,7 +36,7 @@ export function AdminSettings() {
     setUploadingHero(true)
     setError(null)
     try {
-      update('hero_image', await fileToOptimisedDataUrl(file, 1920))
+      update('hero_image', await storeImage(file, 'home-hero', 1920))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That image could not be processed.')
     } finally {

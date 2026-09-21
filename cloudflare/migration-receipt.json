@@ -1,0 +1,55 @@
+{
+  "capturedFrom": "the hosted WorkBuddy cloud database, table public.events",
+  "capturedAt": "2026-09-21",
+  "note": "SHA-256 of each write-up and title, taken from the database the site used before the migration. cloudflare/verify.mjs compares these against the archive that seeds the Cloudflare database, so the text is known to have arrived unaltered.",
+  "events": {
+    "ai-capability-tree-big-tech-interviews": {
+      "title_sha256": "c46bc70a7216fc57f9118f1f04c71c76fbb92facf614ade2fb99502c806a123a",
+      "body_sha256": "e5350cf91bf83cdbed93bdda34377bfcb3ff3d43035674793028af8549d8f481"
+    },
+    "deepseek": {
+      "title_sha256": "1f603f3325ab396c03ede864862a143a3f15c7949f160ed9634a6ecc40f03d9f",
+      "body_sha256": "84863c08b67b80b9f4dd99259166f65553b1b8f934f56ecc7361b28c7d75a75d"
+    },
+    "digital-innovation-challenge-2026": {
+      "title_sha256": "01553d1ae5d63ffca3bc7fe54fd3d9dfaf5591790984eb76d664beb3e6593b2d",
+      "body_sha256": "bfa054ec52ffef068a132e6b0fa9e0b475a75d3f55e94b72d617bf02f7507a20"
+    },
+    "exploring-ai-frontiers-with-hai-helen-li": {
+      "title_sha256": "60303061aaf47543a309c908cc6d064f65d4d975a569ecad0366a2400d11f531",
+      "body_sha256": "f0558fc78241b40072735389f26542c089029eb54093f85175f366ee73a73d31"
+    },
+    "hackdku2024": {
+      "title_sha256": "f2342e91163c5e97d52043999cde5c796f62f82ac2cf38964ac93990fe697b08",
+      "body_sha256": "ce0dfea9219fcb5234a0df7c31ccb26ad39a951ad9c7e9b07ebb6b93dfc4baa7"
+    },
+    "hackdku2025": {
+      "title_sha256": "0daa47d0fe49131ad43ba7fca449a057e86b893c5de8c35d804bad73e3b4bbb1",
+      "body_sha256": "28c9007808d854fac77e855db3b3c540610431baebc5bdbffc9d3b5937ebd63e"
+    },
+    "hackdku2026": {
+      "title_sha256": "d8f49d05d55d081bd09739e6fbeba584caf783c982f137d4ce8a7c08e97ba097",
+      "body_sha256": "ce6c88880dc935036e06d5cb9a447e2ba5f5640ae01be6baf20cdc4b2f7aa849"
+    },
+    "machine-learning-engineering-in-industry": {
+      "title_sha256": "36f24640b6a8a75faec9ce2c10243cea799c3eb6e2d234e873efecbadee9ef30",
+      "body_sha256": "c0e97da9bcc2bb97a9cc94a7e29ac4dcce53fb07e7b8551b7ba8b7c62224129e"
+    },
+    "majorinfo": {
+      "title_sha256": "26b7389526775153a5005a926680b4636df5a69a00fcaaaa880607c11907fb85",
+      "body_sha256": "a7884069cd7f71d7a4ce61550c6585669dbbc681bd259ce122950c66be0d7c4c"
+    },
+    "personal-website-coding-workshop": {
+      "title_sha256": "76273037c3f8202d4cacd332e97f57060869ac792b4847e6f1f85ca67d88a07c",
+      "body_sha256": "812e1c88a44d5d238c61b69f2c033562c340b7f71162a38c8f84cfc80e29cb43"
+    },
+    "slide-prompt-engineering-101": {
+      "title_sha256": "cc8ca1eaa032f78bba969ebef83396a4b77e891bc2335732236a8b27dc9574b3",
+      "body_sha256": "e0878b5cc3d6698cc75a6faf60c1b00ed0aa6b7c3b54b7c2d2194818401afaf3"
+    },
+    "waic-2026-field-trip": {
+      "title_sha256": "b8f5e4668fbd53532c35c63cffc24f47a297a2ede8c175f738af145859cfb77e",
+      "body_sha256": "0ee8f79d24d1b1957a008e4569990926f5d56d0300f4260d3c05d38852c5032f"
+    }
+  }
+}

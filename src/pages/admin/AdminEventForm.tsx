@@ -2,9 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Eye, ImagePlus, Loader2, Save, Trash2 } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
-import { fetchAllEvents, saveEvent, type EventDraft } from '@/lib/data'
+import { fetchAllEvents, saveEvent, storeImage, type EventDraft } from '@/lib/data'
 import { deriveSummary, ROLE_LABEL, slugify } from '@/lib/format'
-import { fileToOptimisedDataUrl } from '@/lib/image'
 import { useSite } from '@/lib/store'
 import type { EventRecord, SiteSettings } from '@/lib/types'
 
@@ -114,9 +113,10 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     setUploading(target)
     setError(null)
     try {
-      const dataUrl = await fileToOptimisedDataUrl(file)
-      if (target === 'cover') update('cover_image', dataUrl)
-      else update('gallery', [...draft.gallery, dataUrl])
+      const owner = draft.slug || slugify(draft.title) || 'event'
+      const url = await storeImage(file, `${owner}-${target}`)
+      if (target === 'cover') update('cover_image', url)
+      else update('gallery', [...draft.gallery, url])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That image could not be processed.')
     } finally {

@@ -5,3 +5,8 @@ dist
 
 # Third-party reference material (DKU CS Club blog archive etc.) — not part of the site
 参考资料/
+
+# Cloudflare
+.wrangler/
+cloudflare/seed.sql
+cloudflare/.site-key.txt

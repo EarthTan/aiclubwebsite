@@ -1,4 +1,18 @@
-import { cloud } from './cloud'
+import {
+  ApiError,
+  KEY_REJECTED,
+  fetchEveryEvent,
+  fetchPublishedEvents,
+  fetchSettingsValue,
+  putEvent,
+  putEventStatus,
+  putKey,
+  putSettings,
+  removeEvent,
+  uploadImage,
+  verifyKey,
+} from './api'
+import { fileToOptimisedImage } from './image'
 import { readSiteKey, rememberSiteKey } from './siteKey'
 import { deriveSummary } from './format'
 import type { ArchivedEvent, EventRecord, SiteSettings } from './types'
@@ -115,16 +129,12 @@ export async function loadArchive(): Promise<EventRecord[]> {
 }
 
 /**
- * Every event row the caller is allowed to see. Anonymous visitors get published
- * rows only; signed-in administrators additionally get drafts and archives.
+ * Every event row the caller is allowed to see. Visitors get published rows
+ * only; drafts and archived records are not sent to them at all.
  */
 export async function fetchDatabaseEvents(): Promise<EventRecord[]> {
-  const { data, error } = await cloud.database
-    .from('events')
-    .select('*')
-    .order('event_date', { ascending: false })
-  if (error) throw error
-  return (data ?? []).map((row) => toEvent(row as Record<string, unknown>))
+  const rows = await fetchPublishedEvents()
+  return rows.map((row) => toEvent(row))
 }
 
 const newestFirst = (a: EventRecord, b: EventRecord) => (a.event_date < b.event_date ? 1 : -1)
@@ -151,18 +161,13 @@ export async function fetchPublicEvents(): Promise<EventRecord[]> {
 /**
  * The whole library, drafts and archived records included.
  *
- * This is the one read the public policies cannot serve: the site's own roles see
- * published records only — drafts and archived records are not theirs to see. The
- * panel therefore asks for the library through the same key every write uses,
- * and the ordering is done in the database.
+ * Drafts and archived records are not the public's to see, so this read is
+ * asked for through the same key every write uses, and the server decides what
+ * to answer.
  */
 export async function fetchAllEvents(): Promise<EventRecord[]> {
-  const { data, error } = await cloud.database.rpc('admin_list_events', {
-    p_key: requireSiteKey(),
-  })
-  if (error) throw writeError(error)
-  const rows = (data ?? []) as Record<string, unknown>[]
-  return rows.map(toEvent).sort(newestFirst)
+  const rows = await guarded(fetchEveryEvent)
+  return rows.map((row) => toEvent(row)).sort(newestFirst)
 }
 
 /**
@@ -239,15 +244,8 @@ export async function saveEvent(draft: EventDraft): Promise<EventRecord[]> {
     source_url: draft.source_url,
     source_credit: draft.source_credit,
   }
-  const { data, error } = await cloud.database.rpc('admin_save_event', {
-    p_key: requireSiteKey(),
-    p_event: payload,
-  })
-  if (error) throw writeError(error)
-  if (!data) {
-    throw new Error('The change was saved but could not be read back. Reload the page.')
-  }
-  return [toEvent(data as Record<string, unknown>)]
+  const saved = await guarded(() => putEvent(payload))
+  return [toEvent(saved)]
 }
 
 /** Hides an event from the public site without destroying the record. */
@@ -261,25 +259,14 @@ export async function restoreEvent(slug: string): Promise<void> {
 }
 
 async function setStatus(slug: string, status: EventRecord['status']): Promise<void> {
-  const { data, error } = await cloud.database.rpc('admin_set_event_status', {
-    p_key: requireSiteKey(),
-    p_slug: slug,
-    p_status: status,
-  })
-  if (error) throw writeError(error)
-  if (data !== true) {
+  if (!(await guarded(() => putEventStatus(slug, status)))) {
     throw new Error('That event is no longer in the library. Reload the page and try again.')
   }
 }
 
 /** Removes an event from the library for good. */
 export async function deleteEvent(slug: string): Promise<number> {
-  const { data, error } = await cloud.database.rpc('admin_delete_event', {
-    p_key: requireSiteKey(),
-    p_slug: slug,
-  })
-  if (error) throw writeError(error)
-  if (data !== true) {
+  if (!(await guarded(() => removeEvent(slug)))) {
     throw new Error('That event is no longer in the library. Reload the page and try again.')
   }
   return 1
@@ -291,13 +278,7 @@ export async function deleteEvent(slug: string): Promise<number> {
 
 export async function fetchSettings(): Promise<SiteSettings> {
   try {
-    const { data, error } = await cloud.database
-      .from('site_settings')
-      .select('value')
-      .eq('key', 'site')
-      .maybeSingle()
-    if (error) throw error
-    const value = (data?.value ?? null) as Partial<SiteSettings> | null
+    const value = (await fetchSettingsValue()) as Partial<SiteSettings> | null
     if (!value) return DEFAULT_SETTINGS
     return { ...DEFAULT_SETTINGS, ...value }
   } catch {
@@ -306,14 +287,26 @@ export async function fetchSettings(): Promise<SiteSettings> {
 }
 
 export async function saveSettings(settings: SiteSettings): Promise<void> {
-  const { data, error } = await cloud.database.rpc('admin_save_settings', {
-    p_key: requireSiteKey(),
-    p_value: { ...settings },
-  })
-  if (error) throw writeError(error)
-  if (data !== true) {
+  if (!(await guarded(() => putSettings({ ...settings })))) {
     throw new Error('The change was rejected. Reload the page and try again.')
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Photographs                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Shrinks a chosen photograph and stores it, answering with the URL to refer to
+ * it by.
+ *
+ * The shrink happens on the machine that already has the file open, and the
+ * bytes are stored outside the database, so an event's row stays a row rather
+ * than growing into a photo album.
+ */
+export async function storeImage(file: File, name: string, maxEdge = 1400): Promise<string> {
+  const blob = await fileToOptimisedImage(file, maxEdge)
+  return guarded(() => uploadImage(blob, name))
 }
 
 /* -------------------------------------------------------------------------- */
@@ -328,36 +321,29 @@ export interface AdminState {
 }
 
 /**
- * The key this browser holds, or a reason there is none to hand over.
+ * Turns a refusal from the server into the sentence the panel shows.
  *
- * Every caller is a write or a full-library read, so a missing key is a bug in
- * the caller rather than a state to be handled quietly.
- */
-function requireSiteKey(): string {
-  const key = readSiteKey()
-  if (!key) throw new Error('This browser is no longer holding the site key.')
-  return key
-}
-
-/**
- * Turns a refusal from the database into the sentence the panel shows.
- *
- * Every key-checked function refuses with SQLSTATE `42501`. The hosted gateway
- * prefixes that with the module that raised it — what reaches the browser is
- * `DATABASE_42501` — so the check is on the end of the code rather than on the
- * whole of it, and it stays correct against the local API, which sends the bare
- * SQLSTATE.
+ * A key that was replaced on another machine and a key that was never right
+ * look identical from here, and are worth the same sentence.
  */
 function writeError(err: unknown): Error {
-  const code = (err as { code?: string } | null)?.code
-  if (typeof code === 'string' && code.endsWith('42501')) {
+  if (err instanceof ApiError && err.code === KEY_REJECTED) {
     return new Error('The site key was not accepted. It may have been replaced.')
   }
   return err instanceof Error ? err : new Error('That change was not accepted.')
 }
 
+/** Runs a call and reports any refusal in the panel's own words. */
+async function guarded<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (err) {
+    throw writeError(err)
+  }
+}
+
 /**
- * Whether the panel should open, asked of the database rather than decided here.
+ * Whether the panel should open, asked of the server rather than decided here.
  *
  * A key that is present but no longer valid is reported as such instead of being
  * forgotten, so that a key replaced on another machine produces a sentence rather
@@ -367,25 +353,21 @@ export async function readAdminState(): Promise<AdminState> {
   const key = readSiteKey()
   if (!key) return { hasKey: false, isAdmin: false }
   try {
-    const { data, error } = await cloud.database.rpc('site_key_ok', { candidate: key })
-    if (error) throw error
-    return { hasKey: true, isAdmin: data === true }
+    return { hasKey: true, isAdmin: await verifyKey(key) }
   } catch {
     return { hasKey: true, isAdmin: false }
   }
 }
 
 /**
- * Checks a key against the database and, if it is accepted, keeps it.
+ * Checks a key against the server and, if it is accepted, keeps it.
  *
  * The key is never validated in the browser. This page is public, so a check
  * that could be performed here would be a check anyone could read the answer to.
  */
 export async function openWithSiteKey(key: string): Promise<void> {
   const candidate = key.trim()
-  const { data, error } = await cloud.database.rpc('site_key_ok', { candidate })
-  if (error) throw writeError(error)
-  if (data !== true) throw new Error('That key was not accepted.')
+  if (!(await verifyKey(candidate))) throw new Error('That key was not accepted.')
   rememberSiteKey(candidate)
 }
 
@@ -405,12 +387,7 @@ export async function replaceSiteKey(current: string, next: string): Promise<voi
   if (replacement.length < 24) {
     throw new Error('A site key needs at least 24 characters.')
   }
-  const { data, error } = await cloud.database.rpc('admin_replace_site_key', {
-    p_current: current,
-    p_next: replacement,
-  })
-  if (error) throw writeError(error)
-  if (data !== true) {
+  if (!(await guarded(() => putKey(current, replacement)))) {
     throw new Error('The key was not replaced. Reload the page and try again.')
   }
   rememberSiteKey(replacement)
