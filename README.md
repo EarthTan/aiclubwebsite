@@ -138,19 +138,23 @@ npm run cf:check       # 端到端自检：26 项
 
 ## 部署
 
-需要先有 Cloudflare 账号，以及一个已经托管在 Cloudflare 的域名。
+需要先有 Cloudflare 账号，以及一个已经托管在 Cloudflare 的域名。完整流程（含买域名、开通 R2、绑定自有域名、上线核对）见 **[DEPLOY.md](DEPLOY.md)**。
+
+命令摘要：
 
 ```bash
 npx wrangler login                                   # 或配置 CLOUDFLARE_API_TOKEN
 npx wrangler d1 create dku-ai-club                   # 把输出的 database_id 填进 wrangler.jsonc
 npx wrangler r2 bucket create dku-ai-club-images
-npm run build
+npm run cf:seed                                      # 生成 cloudflare/seed.sql 与站点密钥
 npx wrangler d1 execute dku-ai-club --remote --file cloudflare/schema.sql
 npx wrangler d1 execute dku-ai-club --remote --file cloudflare/seed.sql
-npx wrangler deploy
+npm run cf:deploy                                    # build + wrangler deploy
 ```
 
 部署完成后在 Cloudflare 控制台的 Worker → Settings → Domains & Routes 里绑定自有域名，证书由 Cloudflare 自动签发。
+
+站点上线之后不要再执行 `cf:seed` 与 `seed.sql`：前者会重写密钥，后者会把数据库里的密钥换成种子文件里那一把。事件内容本身不会被覆盖。
 
 ## 素材与版权
 

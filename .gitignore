@@ -10,3 +10,6 @@ dist
 .wrangler/
 cloudflare/seed.sql
 cloudflare/.site-key.txt
+
+# Working notes and local tooling state — kept on disk, not in the repository
+.workbuddy/

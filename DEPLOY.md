@@ -1,0 +1,350 @@
+# DKU AI Club 官网 — Cloudflare 上线操作手册
+
+这份手册覆盖从零开始把站点发布到 Cloudflare、并绑定自有域名的全部操作。按顺序执行即可，每一步都写明了在哪个页面的哪个按钮、会看到什么、以及这一步失败时通常是什么原因。
+
+全程需要动到浏览器的地方只有四处：注册账号、购买域名、开通 R2、绑定域名。其余都在终端里完成。
+
+预计耗时 40–60 分钟，其中大部分时间花在等待域名解析生效上。
+
+---
+
+## 一、上线之后的样子
+
+先把最终形态讲清楚，后面每一步都是在拼这张图。
+
+- 访问 `https://<自有域名>` 打开社团官网，访问 `https://<自有域名>/#/admin` 打开管理后台。
+- 整个站点只有一个域名。网页、接口（`/api/*`）、图片（`/media/*`）都由同一个 Cloudflare Worker 提供。
+- 事件的正文与文案存在 Cloudflare D1 数据库里。部署新代码不会覆盖数据库内容，重新发布站点不会让已发布的事件回到旧版本。
+- 通过后台上传的照片存在 Cloudflare R2 对象存储里，数据库只记一条链接。
+- 后台的通行凭证是一把站点密钥，没有账号和邮箱。它只以哈希形式存在数据库里，丢了没有找回入口。
+
+费用方面，这个规模的全部服务都在免费额度内：Workers 静态资源请求不计费，D1 的免费额度是 5 GB 存储，R2 的免费额度是 10 GB 存储加每月 1000 万次读取。唯一需要提供支付方式的是开通 R2 那一步，属于身份验证，额度内不产生扣款（详见第三节）。
+
+---
+
+## 二、开始之前需要准备的东西
+
+| 项目 | 说明 |
+|---|---|
+| 邮箱 | 注册 Cloudflare 账号用，建议用一个不会丢的邮箱 |
+| 域名 | 自行购买，见第三节 |
+| 支付方式 | 开通 R2 需要一张支持外币的信用卡／借记卡，或 PayPal。银联卡在部分账号上可以，以结算页实际显示为准 |
+| 本机环境 | 项目已经装好 Node.js 与依赖，`npm run build` 可通过 |
+
+项目侧只有一处需要改动的文件：`wrangler.jsonc`。里面数据库那一块的 `database_id` 目前是占位符 `00000000-0000-0000-0000-000000000000`，创建数据库之后要替换成真实值。R2 的桶名 `dku-ai-club-images` 与 Worker 名 `dku-ai-club` 可以不改，后面对应的命令要与这两个名字保持一致。
+
+以下所有命令都在项目根目录执行（本机是 `/Users/concerto391/Documents/Github/AIClubWebSite`）。
+
+---
+
+## 三、第一步：购买域名
+
+有两条路线，按域名现在在哪里区分。
+
+### 路线 A：直接在 Cloudflare 上买（推荐）
+
+Cloudflare Registrar 以成本价卖域名，不加价，续费也不涨价，且域名自动成为 Cloudflare 账号里的一个站点，后续 DNS 与证书全部自动配置。
+
+操作：
+
+1. 打开 `https://dash.cloudflare.com`，注册并登录账号。
+2. 左侧菜单进入 **Domain Registration → Register Domains**（或直接访问 `https://dash.cloudflare.com/domains`）。
+3. 搜索想要的域名，加入购物车，填注册信息并付款。
+4. 买完之后不用做任何解析配置，域名已经在该账号下。
+
+选择域名时，`.org` 对社团类站点比较合适，`.com` 通用性最好。结账页会显示该后缀的实时价格（`.com` 大致在 10 美元出头／年），没有隐藏费用。
+
+### 路线 B：在别处买，再把域名交给 Cloudflare 管理
+
+适用于域名已经在阿里云、腾讯云、Namesilo、Namecheap 等处的情况。**不需要做域名转移**，转移 registrar 要走 5–7 天流程；只需要把域名的 NS（名称服务器）改成 Cloudflare 给的两个地址。
+
+1. 先按第四节把域名加进 Cloudflare，Cloudflare 会给出一对 NS 地址。
+2. 回到注册商后台，找到「域名 DNS 修改／修改 DNS 服务器」。
+3. 删掉原有的 NS，填入 Cloudflare 给的那两个，保存。
+4. 等生效。通常在几十分钟内，最长 24 小时。
+
+两条路线都不需要 ICP 备案。备案针对的是中国大陆境内的服务器，Cloudflare 的节点在境外，不涉及这项要求。
+
+---
+
+## 四、第二步：把域名接入 Cloudflare
+
+只有走路线 B 才需要这一步；在 Cloudflare 买的域名已经是托管状态，可直接跳到第五节。
+
+1. 登录 `https://dash.cloudflare.com`，点 **Add a site**（添加站点）。
+2. 输入域名，选择 **Free** 计划。
+3. Cloudflare 会扫描现有 DNS 记录并给出两个 NS 地址，形如 `xxx.ns.cloudflare.com`。
+4. 到域名注册商处把 NS 改成这两个（见路线 B 第 2 步）。
+5. 回到 Cloudflare 的站点概览页，等状态从 *Pending* 变成 **Active**。状态变绿之前，后面的域名绑定无法进行。
+6. 状态变绿后，可以在 **SSL/TLS → Overview** 里确认加密模式为 **Full**（Worker 自带证书，这个设置对新绑定的域名一般不需要调整）。
+
+---
+
+## 五、第三步：开通 R2 对象存储
+
+这是整个流程里唯一一个需要填写支付方式的环节，也是最容易卡住的一步，单独说明。
+
+1. 登录 Cloudflare 控制台，左侧菜单找到 **R2 Object Storage**（在 *Storage & Databases* 分组下）。
+2. 第一次进入会提示启用服务并添加支付方式。点 **Add payment method**，填入卡号信息完成验证。
+3. 之后页面会出现 **Add R2 Subscription to my account**（把 R2 订阅添加到账户），确认启用。
+
+关于这一步的三点说明：
+
+- **绑卡不等于扣费。** Cloudflare 要求先用支付方式验证身份，R2 才允许开通。免费额度是每月 10 GB 存储、100 万次写操作、1000 万次读操作，出站流量永久免费。这个站点的图片量离额度上限很远。验证过程可能出现约 1 美元的预授权，随后撤销。
+- **开通之后不用在网页上建桶。** 存储桶在第八节用命令行创建，与 `wrangler.jsonc` 里写的桶名保持一致即可。
+- 如果卡在支付验证上，换一张卡或改用 PayPal；这个环节 Cloudflare 不接受虚拟卡号类的短期支付工具。
+
+---
+
+## 六、第四步：在本机登录 Cloudflare
+
+终端里执行：
+
+```bash
+npx wrangler login
+```
+
+浏览器会自动打开 Cloudflare 授权页面，点 **Allow** 完成授权。授权成功后终端会提示登录成功。
+
+验证登录状态：
+
+```bash
+npx wrangler whoami
+```
+
+这条命令会列出当前账号和一个可用的 Account ID，看到 Account ID 就说明登录有效。
+
+如果浏览器授权不方便，也可以在控制台 **My Profile → API Tokens** 里创建一个模板为 *Edit Cloudflare Workers* 的令牌，然后改用环境变量的方式：
+
+```bash
+export CLOUDFLARE_API_TOKEN="刚才创建的令牌"
+```
+
+两种方式选一种即可。用 OAuth 登录（`wrangler login`）权限最全，后续创建 D1 与 R2 都不需要额外授权，优先选它。
+
+---
+
+## 七、第五步：创建数据库（D1）
+
+```bash
+npx wrangler d1 create dku-ai-club
+```
+
+执行成功后会打印一段配置，形如：
+
+```
+✅ Successfully created DB 'dku-ai-club'
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dku-ai-club"
+database_id = "3f2a…真实的一串字符…"
+```
+
+把输出里的 `database_id` 复制下来，替换 `wrangler.jsonc` 第 33 行的占位符：
+
+```jsonc
+"d1_databases": [
+  {
+    "binding": "DB",
+    "database_name": "dku-ai-club",
+    "database_id": "这里粘贴刚刚得到的真实 id"
+  }
+],
+```
+
+数据库此时还是空的，只有名字和 id。建表和写入数据在第九节完成。
+
+如果终端提示该数据库已存在，说明账号里已经有同名的库，改用现有那个：`npx wrangler d1 list` 可以看到它的 id，直接填进配置即可。
+
+---
+
+## 八、第六步：创建图片存储桶（R2）
+
+```bash
+npx wrangler r2 bucket create dku-ai-club-images
+```
+
+桶名必须与 `wrangler.jsonc` 里 `r2_buckets[0].bucket_name` 完全一致，否则部署时会报找不到存储桶。
+
+确认创建成功：
+
+```bash
+npx wrangler r2 bucket list
+```
+
+这条命令会列出账号里的存储桶，看到 `dku-ai-club-images` 即为成功。
+
+---
+
+## 九、第七步：确定后台密码，并生成种子数据
+
+后台的通行凭证是一把站点密钥。数据库里存的是它的 SHA-256，密文之外读不回来，所以这一步确定下来之后要立刻存进密码管理器。
+
+生成种子数据用的是：
+
+```bash
+npm run cf:seed
+```
+
+这个命令做两件事：把 `public/content/events.json` 里的 12 篇事件转换成可写入数据库的 SQL（输出到 `cloudflare/seed.sql`），以及把那把密钥的哈希写进同一份 SQL。它有三种用法：
+
+| 想要的密钥 | 命令 |
+|---|---|
+| 沿用本机已有的那把（记录在 `cloudflare/.site-key.txt`） | `SITE_KEY="$(cat cloudflare/.site-key.txt)" npm run cf:seed` |
+| 自己指定一把（至少 24 个字符） | `SITE_KEY='自己定的密码' npm run cf:seed` |
+| 让脚本生成一把新的随机密钥 | `npm run cf:seed`，随后读 `cloudflare/.site-key.txt` |
+
+第三种用法会在终端提示密钥已写入 `cloudflare/.site-key.txt`，用文本编辑器打开这个文件，把里面那串字符（形如 `dkuaiclub-` 加 32 位随机字符）整份抄进密码管理器。
+
+**这一步之后要做的事：** 把这把密钥存好。数据库里只有哈希，忘记之后没有找回入口，只能按第十三节的办法重设。
+
+**这一步的一个注意事项：** 每次运行 `npm run cf:seed` 都会重写 `cloudflare/seed.sql`，其中密钥那一行会被替换成当次使用的密钥。所以站点上线之后不要再随手重新生成种子，否则后台密码会在下次执行种子文件时被改掉。
+
+---
+
+## 十、第八步：建表并把事件写进线上数据库
+
+先建表：
+
+```bash
+npx wrangler d1 execute dku-ai-club --remote --file cloudflare/schema.sql
+```
+
+再写入事件与密钥：
+
+```bash
+npx wrangler d1 execute dku-ai-club --remote --file cloudflare/seed.sql
+```
+
+`schema.sql` 与 `seed.sql` 都是可重复执行的：建表语句带 `if not exists`，事件的插入语句带 `on conflict (slug) do nothing`。所以重复执行不会破坏已有数据，也不会覆盖在后台改过的正文。
+
+验证写入结果：
+
+```bash
+npx wrangler d1 execute dku-ai-club --remote --command "select count(*) as events from events"
+```
+
+返回的 `events` 应该是 `12`。
+
+`--remote` 表示操作线上的数据库；不带这个参数时命令作用于本机开发用的临时库，两者互不影响。
+
+---
+
+## 十一、第九步：部署站点
+
+```bash
+npm run cf:deploy
+```
+
+这条命令等于 `npm run build && npx wrangler deploy`：先做类型检查并生成 `dist/`，再把静态文件、Worker 代码和绑定信息一起发布到 Cloudflare。
+
+首次执行时可能出现的两处提示：
+
+- **是否注册 `workers.dev` 子域。** Cloudflare 会要求选一个全局唯一的子域名，例如 `dku-ai-club`。跟着提示输入即可。这个子域只是部署后的默认访问地址，绑上自有域名之后可以保留，也可以关掉。
+- **是否创建新的 Worker。** 提示创建 `dku-ai-club` 时确认即可。
+
+部署成功的输出里会带一行访问地址，形如：
+
+```
+Uploaded dku-ai-club
+Deployed dku-ai-club triggers
+  https://dku-ai-club.<子域>.workers.dev
+```
+
+打开这个地址，站点应该能正常显示首页与事件列表。`.workers.dev` 域名在中国大陆无法直接访问，这一步只作为部署成功的验证，正式访问用自有域名。
+
+---
+
+## 十二、第十步：把自有域名接到站点上
+
+1. 回到 Cloudflare 控制台，进入 **Workers & Pages**，点开名为 `dku-ai-club` 的 Worker。
+2. 进入 **Settings → Domains & Routes**。
+3. 点 **Add → Custom domain**，输入要使用的域名，例如 `dkuaiclub.org`，确认。
+4. Cloudflare 会自动创建对应的 DNS 记录并签发证书，通常一两分钟内生效。状态从 *Initializing* 变为 *Active* 后即可访问。
+
+如果希望裸域和 `www` 都能打开，两个都添加一次。若想把其中一个统一跳到另一个，在站点里用 **Rules → Redirect Rules** 建一条规则：匹配 `www.<域名>/*`，动作设为 *Dynamic redirect*，目标写 `https://<域名>/${1}`，状态码 301。这样无论访客从哪个地址进来，最终都落在同一个规范地址上。
+
+站点的路由使用哈希形式，页面地址形如 `https://<域名>/#/events/<slug>`。这是有意为之：哈希之后的部分不参与服务器寻址，所以刷新任意页面、把链接发给别人，都不会出现 404。
+
+---
+
+## 十三、第十一步：上线后的核对
+
+按顺序走一遍，五项都通过就算上线完成。
+
+1. **首页与事件页。** 打开域名，首页首屏轮播正常，`/#/events` 能看到 12 篇事件，点进任意一篇详情页正文完整、图集正常。
+2. **后台能进。** 打开 `https://<域名>/#/admin`，输入上一步确定的站点密钥，能进入事件库列表。密钥不对时会提示未被接受。
+3. **图片上传能用。** 在后台随便打开一篇事件，上传一张图片，保存后回到公开页面确认图片显示。这一步实际验证的是 R2 是否通了；如果失败，报错信息会指向存储桶，回去检查第五节的开通状态与第八节的桶名。
+4. **数据库里有数据。** 在后台事件库页看到 12 条记录，状态为已发布。
+5. **写操作受保护。** 退出后台（清掉浏览器里的密钥）后，公开页面一切正常，但任何修改都做不了。这是设计如此：浏览器永远不接触数据库，所有校验都在服务端完成。
+
+---
+
+## 十四、日常维护：哪些操作会动到什么
+
+把三类操作的边界分清楚，可以避免误删或误覆盖。
+
+**改内容（改事件、改文案、换活动图）** — 在后台直接改，写入的是线上数据库。这类改动与代码无关，重新部署站点不会覆盖它。
+
+**改代码（改版式、调字号、加页面）** — 在本地改完，执行：
+
+```bash
+npm run cf:deploy
+```
+
+数据库内容不受影响，发布完成后线上页面立即更新。
+
+**换后台密码** — 后台 **Settings** 页底部填入当前密钥与新密钥即可，不需要邮箱，也不需要动数据库。换完之后其他浏览器里保存的旧密钥立刻失效。
+
+**忘记密钥** — 唯一的恢复途径是重新写一条哈希进数据库：
+
+```bash
+SITE_KEY='新的一把至少 24 个字符的密码' npm run cf:seed
+npx wrangler d1 execute dku-ai-club --remote --file cloudflare/seed.sql
+```
+
+事件部分因为带 `on conflict do nothing`，不会被改动；只有密钥那一行被替换。
+
+**新增事件** — 走后台的新建按钮，不要重跑种子文件。
+
+---
+
+## 十五、可选：接上 GitHub 自动部署
+
+如果希望每次把代码推到 GitHub 就自动发布，可以省掉手动执行 `cf:deploy`：
+
+1. 把项目推到一个 GitHub 仓库。
+2. 在 Cloudflare 控制台进入该 Worker 的 **Settings → Build**，选择 **Connect Git**，授权并选中仓库与分支。
+3. 构建命令填 `npm run build`，部署命令保持默认的 `wrangler deploy`。
+
+注意 `.gitignore` 里已经排除了 `cloudflare/seed.sql` 与 `cloudflare/.site-key.txt`，这两份文件不会进入仓库，自动部署流程也不会碰数据库。数据库的初始化始终只在第十节做一次。
+
+---
+
+## 十六、常见故障对照
+
+| 现象 | 通常原因 | 处理 |
+|---|---|---|
+| 部署时报找不到数据库 | `wrangler.jsonc` 里的 `database_id` 还是占位符 | 回到第七节，用真实 id 替换 |
+| 部署时报找不到存储桶 | 桶没建，或桶名与配置不一致 | 执行 `npx wrangler r2 bucket list` 核对名字 |
+| 首页能开，事件列表是空的 | 线上数据库没写入种子 | 回到第十节，重跑 `schema.sql` 与 `seed.sql` |
+| 页面能开但显示内置归档 | 数据库里一条已发布的事件都没有 | 同上；这是空库时的兜底显示 |
+| 图片上传失败 | R2 未开通，或支付方式未验证 | 回到第五节 |
+| 后台提示密钥未被接受 | 密钥与数据库里的哈希不一致 | 用第十四节的方式重设密钥 |
+| 自定义域名一直停在 Initializing | 域名状态还不是 Active，或 NS 尚未生效 | 回到第四节第 5 步等待状态变绿 |
+| 绑域名时找不到自己的域名 | 域名还没加进该 Cloudflare 账号 | 先在控制台 Add a site |
+| 网站在大陆打不开 | 用的是 `.workers.dev` 地址 | 改用已绑定的自有域名 |
+
+---
+
+## 十七、免费额度与账单边界
+
+这个站点在正常运行下不会产生费用，作为边界参照：
+
+- **Workers** — 免费计划每天 10 万次请求。命中静态资源的请求不执行 Worker 代码，也不计入这项。自有域名的请求同样包含在免费额度内。
+- **D1** — 免费额度为 5 GB 存储，每天 500 万行读取与 10 万行写入。这个站点的事件只有几十条，主要消耗来自公开页面的读取。
+- **R2** — 免费额度为 10 GB 存储，每月 100 万次写、1000 万次读，出站流量不计费。图片总量以 MB 计。
+- **域名** — 唯一的固定支出，按年付费，价格在购买时页面显示。
+
+账单页在控制台右上角头像菜单里的 **Billing**，可以随时查看用量。免费额度用尽时服务会停止而不是自动扣费（R2 例外，它在超出免费额度后按量计费，这也是开通时要求绑定支付方式的原因）。
