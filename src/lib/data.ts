@@ -31,11 +31,9 @@ export const FALLBACK_CATEGORIES = [
 export const DEFAULT_SETTINGS: SiteSettings = {
   club_name: 'DKU AI Club',
   tagline: 'Artificial intelligence, built by students',
-  hero_kicker: 'Duke Kunshan University · Student organization',
-  hero_title: 'Learning AI by building it, together',
-  hero_subtitle:
-    'The DKU AI Club is a student community that turns curiosity about artificial intelligence into workshops, talks, hackathons and industry visits — open to every major and every level of experience.',
-  hero_image: null,
+  // Empty on purpose: which events lead the home page is a decision for the
+  // club, made in the panel, not something the code should guess at.
+  home_slugs: [],
   about_title: 'Who are we?',
   about_lead:
     'At DKU, the AI Club turns curiosity about artificial intelligence into workshops, talks, hackathons and industry visits. Everything we run is student-led and open to every major, with no prior experience expected.',
@@ -302,11 +300,29 @@ export async function deleteEvent(slug: string): Promise<number> {
 /* Settings                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The stored copy, narrowed to the fields the site still has.
+ *
+ * The row is one JSON document rather than one column per field, so a field
+ * that has since been retired would otherwise be merged back in and written out
+ * again on the next save — outliving the code that understood it. Only known
+ * keys cross this line, which is also what retires them for good.
+ */
+function asSettings(stored: unknown): SiteSettings {
+  const source = (stored ?? {}) as Record<string, unknown>
+  const merged: Record<string, unknown> = { ...DEFAULT_SETTINGS }
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (source[key] !== undefined) merged[key] = source[key]
+  }
+  // An ordered list is the one shape worth insisting on: anything else would
+  // reach the home page and be walked as a sequence.
+  if (!Array.isArray(merged.home_slugs)) merged.home_slugs = []
+  return merged as unknown as SiteSettings
+}
+
 export async function fetchSettings(): Promise<SiteSettings> {
   try {
-    const value = (await fetchSettingsValue()) as Partial<SiteSettings> | null
-    if (!value) return DEFAULT_SETTINGS
-    return { ...DEFAULT_SETTINGS, ...value }
+    return asSettings(await fetchSettingsValue())
   } catch {
     return DEFAULT_SETTINGS
   }

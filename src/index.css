@@ -100,3 +100,61 @@
 .article-body code {
   @apply rounded bg-muted px-1.5 py-0.5 text-[0.9em];
 }
+
+/*
+  The administrator panel's writing surface.
+
+  It wears `.article-body` as well, so a write-up is set in the same type while
+  it is being written as it will be once it is published. What is added here is
+  only what being *edited* requires: a caret, a placeholder for an empty
+  document, and a visible mark on whichever element the keyboard is attached to.
+*/
+.md-editor-body {
+  @apply outline-none;
+  caret-color: hsl(var(--primary));
+}
+.md-editor-body:focus,
+.md-editor-body:focus-visible {
+  @apply outline-none;
+}
+/*
+  A photograph in the writing surface.
+
+  The block is what the browser drags, not the picture — see `BlockImage` — so
+  that a drag begun on a photograph always means "move this block" and can never
+  be read as selecting text across it. The grip is only an advertisement of that:
+  since the whole block is draggable there is nothing for the grip to do, so it
+  takes no pointer events and simply appears when the pointer or the selection
+  arrives.
+*/
+.md-image-block {
+  @apply relative;
+}
+.md-image-block > img {
+  @apply block;
+}
+.md-image-grip {
+  @apply pointer-events-none absolute left-2 top-2 z-10 flex h-7 w-5 select-none items-center justify-center rounded-md bg-foreground/50 text-background opacity-0 transition-opacity;
+}
+.md-image-grip svg {
+  fill: currentColor;
+}
+.md-image-block:hover .md-image-grip,
+.md-image-block.ProseMirror-selectednode .md-image-grip {
+  @apply opacity-100;
+}
+/* The block the cursor is standing on, and the field that describes it, are the
+   same object; the outline is how that is said. A photograph is chosen as a
+   whole block, so for one of those the ring lands on its wrapper rather than on
+   the `<img>` inside it — the first selector is what does that. */
+.md-editor-body .ProseMirror-selectednode,
+.md-editor-body img.ProseMirror-selectednode {
+  @apply rounded-xl ring-2 ring-primary/45 ring-offset-2 ring-offset-background;
+  outline: none;
+}
+/* Shown over an empty document, where a blank rectangle would otherwise give no
+   clue that it is a place to type. */
+.md-editor-body p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply pointer-events-none float-left h-0 text-foreground/35;
+}

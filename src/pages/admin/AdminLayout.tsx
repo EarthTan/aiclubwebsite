@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 
 const TABS = [
   { to: '/admin', label: 'Events', end: true },
+  { to: '/admin/home', label: 'Home page', end: true },
   { to: '/admin/settings', label: 'Settings', end: false },
 ]
 

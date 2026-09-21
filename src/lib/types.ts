@@ -20,6 +20,13 @@ export interface EventRecord {
   tags: string[]
   role: EventRole
   status: EventStatus
+  /**
+   * Retired. Home page placement is now an explicit, ordered list held in
+   * `SiteSettings.home_slugs`, so nothing reads this flag any more. It survives
+   * on the record because it is still a column in the library and is written
+   * back on every save; leaving it alone keeps a save from quietly clearing a
+   * value that predates the change.
+   */
   featured: boolean
   source_url?: string | null
   source_credit?: string | null
@@ -61,10 +68,13 @@ export interface HistoryEntry {
 export interface SiteSettings {
   club_name: string
   tagline: string
-  hero_kicker: string
-  hero_title: string
-  hero_subtitle: string
-  hero_image: string | null
+  /**
+   * The events the home page leads with, in the order they are to appear. Held
+   * as slugs rather than as a position on each event, so that an event which is
+   * unpublished or deleted simply drops out of the sequence and returns to its
+   * place if it comes back.
+   */
+  home_slugs: string[]
   about_title: string
   /** Two-sentence lead shown on the home page. */
   about_lead: string

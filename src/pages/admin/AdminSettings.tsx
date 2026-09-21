@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { ImagePlus, KeyRound, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { KeyRound, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { MarkdownEditor } from '@/components/MarkdownEditor'
 import { saveSettings, replaceSiteKey, storeImage } from '@/lib/data'
 import { useSite } from '@/lib/store'
 import type { SiteSettings } from '@/lib/types'
@@ -12,7 +13,6 @@ export function AdminSettings() {
   const { settings, reload } = useSite()
   const [draft, setDraft] = useState<SiteSettings>(settings)
   const [saving, setSaving] = useState(false)
-  const [uploadingHero, setUploadingHero] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [currentKey, setCurrentKey] = useState('')
@@ -20,7 +20,6 @@ export function AdminSettings() {
   const [replacingKey, setReplacingKey] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
   const [keyNotice, setKeyNotice] = useState<string | null>(null)
-  const heroInput = useRef<HTMLInputElement>(null)
 
   // The provider loads settings asynchronously; adopt them once they arrive.
   useEffect(() => {
@@ -29,19 +28,6 @@ export function AdminSettings() {
 
   function update<K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
-  }
-
-  async function pickHeroImage(file: File | undefined) {
-    if (!file) return
-    setUploadingHero(true)
-    setError(null)
-    try {
-      update('hero_image', await storeImage(file, 'home-hero', 1920))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That image could not be processed.')
-    } finally {
-      setUploadingHero(false)
-    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -158,84 +144,6 @@ export function AdminSettings() {
 
       <div className="mt-6 rounded-2xl border border-border p-5">
         <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Home page hero
-        </h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <label className={label} htmlFor="kicker">Eyebrow line</label>
-            <input id="kicker" className={input} value={draft.hero_kicker}
-              onChange={(e) => update('hero_kicker', e.target.value)} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={label} htmlFor="htitle">Headline</label>
-            <input id="htitle" className={input} value={draft.hero_title}
-              onChange={(e) => update('hero_title', e.target.value)} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={label} htmlFor="hsub">Sub-headline</label>
-            <textarea id="hsub" rows={3} className={input} value={draft.hero_subtitle}
-              onChange={(e) => update('hero_subtitle', e.target.value)} />
-          </div>
-          <div className="md:col-span-2">
-            <span className={label}>Background photograph</span>
-            {draft.hero_image ? (
-              <div className="overflow-hidden rounded-xl border border-border">
-                <img src={draft.hero_image} alt="" className="aspect-[21/9] w-full object-cover" />
-              </div>
-            ) : (
-              <div className="flex aspect-[21/9] items-center justify-center rounded-xl border border-dashed border-border text-xs text-muted-foreground">
-                No photograph yet — the club group photo is used
-              </div>
-            )}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => heroInput.current?.click()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary"
-              >
-                {uploadingHero ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ImagePlus className="h-3.5 w-3.5" />
-                )}
-                Upload
-              </button>
-              {draft.hero_image && (
-                <button
-                  type="button"
-                  onClick={() => update('hero_image', null)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Remove
-                </button>
-              )}
-            </div>
-            <input
-              ref={heroInput}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                void pickHeroImage(e.target.files?.[0])
-                e.target.value = ''
-              }}
-            />
-            <input
-              className={`${input} mt-3`}
-              value={draft.hero_image && !draft.hero_image.startsWith('data:') ? draft.hero_image : ''}
-              onChange={(e) => update('hero_image', e.target.value || null)}
-              placeholder="…or paste an image URL"
-            />
-            <p className="mt-2 text-xs text-muted-foreground">
-              Used as the first slide of the home page carousel. A landscape,
-              roughly 21:9 photograph works best.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-2xl border border-border p-5">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           About the club
         </h3>
         <div className="mt-4 space-y-4">
@@ -253,10 +161,16 @@ export function AdminSettings() {
             </p>
           </div>
           <div>
-            <label className={label} htmlFor="abody">Body (Markdown)</label>
-            <textarea id="abody" rows={8} className={`${input} font-mono text-[13px] leading-relaxed`}
+            <span className={label}>Body (Markdown)</span>
+            <MarkdownEditor
+              documentId="about-body"
               value={draft.about_body}
-              onChange={(e) => update('about_body', e.target.value)} />
+              onChange={(about_body) => update('about_body', about_body)}
+              onUpload={(file) => storeImage(file, 'site-about')}
+              onError={setError}
+              minHeightClass="min-h-[18rem]"
+              placeholder="The full introduction, shown on the about page."
+            />
             <p className="mt-2 text-xs text-muted-foreground">
               The full introduction, shown on the about page.
             </p>
@@ -319,14 +233,16 @@ export function AdminSettings() {
                     update('history', draft.history.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))
                   }
                 />
-                <textarea
-                  rows={8}
-                  className={`${input} font-mono text-[13px] leading-relaxed`}
+                <MarkdownEditor
+                  documentId={`history-${i}`}
                   value={h.body}
-                  placeholder="What happened in this period."
-                  onChange={(e) =>
-                    update('history', draft.history.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))
+                  onChange={(body) =>
+                    update('history', draft.history.map((x, j) => (j === i ? { ...x, body } : x)))
                   }
+                  onUpload={(file) => storeImage(file, 'site-history')}
+                  onError={setError}
+                  minHeightClass="min-h-[18rem]"
+                  placeholder="What happened in this period."
                 />
               </div>
               <button

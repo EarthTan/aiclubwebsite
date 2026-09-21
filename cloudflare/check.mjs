@@ -351,12 +351,18 @@ try {
   })
 
   await check('the site copy can be saved and read back', async () => {
-    const settings = { club_name: 'DKU AI Club', hero_title: 'Set by the checks' }
+    const settings = { club_name: 'Set by the checks', home_slugs: ['hackdku2024', 'deepseek'] }
     const saved = await api('/api/admin/settings', { method: 'PUT', body: { settings }, key })
     assert(saved.json.ok === true, 'the save reported failure')
     const read = await api('/api/settings')
-    assert(read.json.settings.hero_title === 'Set by the checks', 'the copy did not come back')
-    return 'round-tripped'
+    assert(read.json.settings.club_name === 'Set by the checks', 'the copy did not come back')
+    // The order is the whole point of the list, so it is checked rather than
+    // the membership: a list that came back sorted would be a different answer.
+    assert(
+      read.json.settings.home_slugs.join() === 'hackdku2024,deepseek',
+      `the home page order came back as ${JSON.stringify(read.json.settings.home_slugs)}`,
+    )
+    return 'round-tripped, in order'
   })
 
   /* ---- photographs ------------------------------------------------------- */

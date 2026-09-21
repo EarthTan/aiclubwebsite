@@ -1,6 +1,8 @@
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
+import { homeHighlights } from '@/lib/home'
+import { useSite } from '@/lib/store'
 import { cn } from '@/lib/utils'
 // Imported rather than linked out of `public/`, so the mark travels through the
 // build like every other asset — fingerprinted, and correct whatever the site is
@@ -18,14 +20,20 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false)
   const [floating, setFloating] = useState(false)
   const { pathname } = useLocation()
+  const { settings, events } = useSite()
 
   useEffect(() => setOpen(false), [pathname])
 
-  // The home page opens with a full-bleed photograph that runs underneath the
-  // navigation bar, so the bar stays transparent until the reader scrolls away
-  // from the top of the page. An open menu always gets a solid surface.
+  // The bar is clear over a photograph rather than over the page. Whether the
+  // home page has one is a decision made in the panel, so it is asked for
+  // rather than assumed: with no photograph underneath, clear white lettering
+  // would be white lettering on white.
+  const overPhotograph = pathname === '/' && homeHighlights(events, settings).length > 0
+
+  // Kept transparent until the reader scrolls away from the top of the page. An
+  // open menu always gets a solid surface.
   useEffect(() => {
-    if (pathname !== '/') {
+    if (!overPhotograph) {
       setFloating(false)
       return
     }
@@ -33,7 +41,7 @@ export function SiteHeader() {
     sync()
     window.addEventListener('scroll', sync, { passive: true })
     return () => window.removeEventListener('scroll', sync)
-  }, [pathname])
+  }, [overPhotograph])
 
   const overImage = floating && !open
 

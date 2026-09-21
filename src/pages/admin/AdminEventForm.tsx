@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Eye, ImagePlus, Loader2, Save, Trash2 } from 'lucide-react'
-import { Markdown } from '@/components/Markdown'
+import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { MarkdownEditor, type MarkdownEditorHandle } from '@/components/MarkdownEditor'
 import { fetchAllEvents, saveEvent, storeImage, type EventDraft } from '@/lib/data'
+import { altFromFileName } from '@/lib/markdownEditor'
 import { deriveSummary, ROLE_LABEL, slugify } from '@/lib/format'
 import { useSite } from '@/lib/store'
 import type { EventRecord, SiteSettings } from '@/lib/types'
@@ -10,6 +11,10 @@ import type { EventRecord, SiteSettings } from '@/lib/types'
 const label = 'mb-2 block text-sm font-medium'
 const input =
   'w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15'
+const card = 'rounded-2xl border border-border p-5'
+const cardTitle = 'text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground'
+const smallButton =
+  'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary'
 
 function emptyDraft(): EventDraft {
   return {
@@ -25,6 +30,9 @@ function emptyDraft(): EventDraft {
     tags: [],
     role: 'host',
     status: 'draft',
+    // Carried through the form but never shown. The column still exists in the
+    // library, and a save writes every field, so dropping it here would clear a
+    // value that predates the home page having its own selection.
     featured: false,
     source_url: null,
     source_credit: null,
@@ -61,12 +69,13 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
   const [slugTouched, setSlugTouched] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
-  const [preview, setPreview] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [uploading, setUploading] = useState<'cover' | 'gallery' | null>(null)
   const coverInput = useRef<HTMLInputElement>(null)
   const galleryInput = useRef<HTMLInputElement>(null)
+  /** The write-up, so a photograph in the gallery can be placed into it. */
+  const writeUp = useRef<MarkdownEditorHandle>(null)
 
   const categories = useMemo(() => {
     const set = new Set(settings.categories)
@@ -108,13 +117,17 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     setDraft((d) => ({ ...d, [key]: value }))
   }
 
+  /** The stem photographs of this event are named under, so the bucket stays readable. */
+  function owner(): string {
+    return draft.slug || slugify(draft.title) || 'event'
+  }
+
   async function pickImage(file: File | undefined, target: 'cover' | 'gallery') {
     if (!file) return
     setUploading(target)
     setError(null)
     try {
-      const owner = draft.slug || slugify(draft.title) || 'event'
-      const url = await storeImage(file, `${owner}-${target}`)
+      const url = await storeImage(file, `${owner()}-${target}`)
       if (target === 'cover') update('cover_image', url)
       else update('gallery', [...draft.gallery, url])
     } catch (err) {
@@ -179,13 +192,6 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
           </h2>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setPreview((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:text-primary"
-          >
-            <Eye className="h-4 w-4" /> {preview ? 'Hide preview' : 'Preview write-up'}
-          </button>
           <button
             type="submit"
             disabled={saving}
@@ -253,40 +259,28 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
           </div>
 
           <div>
-            <label className={label} htmlFor="body">Write-up (Markdown)</label>
-            <textarea
-              id="body"
-              rows={preview ? 12 : 24}
-              className={`${input} font-mono text-[13px] leading-relaxed`}
+            <label className={label}>Write-up</label>
+            <MarkdownEditor
+              ref={writeUp}
+              documentId={slug ?? 'new'}
               value={draft.body}
-              onChange={(e) => update('body', e.target.value)}
-              placeholder={'## Heading\n\nParagraph text. **Bold**, [links](https://example.com) and ![images](/images/events/example.jpg) all work.'}
+              onChange={(body) => update('body', body)}
+              onUpload={(file) => storeImage(file, `${owner()}-body`)}
+              onError={setError}
+              minHeightClass="min-h-[34rem]"
+              placeholder="Write the event up here. Paste or drag photographs straight in."
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Markdown is rendered as-is on the public page. Headings use <code>##</code> and{' '}
-              <code>###</code>.
+              The write-up as it will appear on the page. Photographs can be pasted or dragged into
+              the text; each one is shrunk and stored as it arrives. Headings are set with the
+              heading buttons, and the Markdown switch shows the markup underneath.
             </p>
           </div>
-
-          {preview && (
-            <div className="rounded-2xl border border-border bg-card p-6">
-              <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Preview
-              </h3>
-              {draft.body.trim() ? (
-                <Markdown>{draft.body}</Markdown>
-              ) : (
-                <p className="text-sm text-muted-foreground">Nothing to preview yet.</p>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-border p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Publishing
-            </h3>
+          <div className={card}>
+            <h3 className={cardTitle}>Publishing</h3>
             <div className="mt-4 space-y-4">
               <div>
                 <label className={label} htmlFor="status">Status</label>
@@ -300,23 +294,15 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
                   <option value="draft">Draft</option>
                   <option value="archived">Archived (hidden)</option>
                 </select>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Which events the home page leads with is set on the Home page tab, not here.
+                </p>
               </div>
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={draft.featured}
-                  onChange={(e) => update('featured', e.target.checked)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                Feature on the home page
-              </label>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              When and where
-            </h3>
+          <div className={card}>
+            <h3 className={cardTitle}>When and where</h3>
             <div className="mt-4 space-y-4">
               <div>
                 <label className={label} htmlFor="date">Date</label>
@@ -371,10 +357,8 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Cover image
-            </h3>
+          <div className={card}>
+            <h3 className={cardTitle}>Cover image</h3>
             <div className="mt-4">
               {draft.cover_image ? (
                 <div className="overflow-hidden rounded-xl border border-border">
@@ -389,7 +373,7 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
                 <button
                   type="button"
                   onClick={() => coverInput.current?.click()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary"
+                  className={smallButton}
                 >
                   {uploading === 'cover' ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -402,7 +386,7 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
                   <button
                     type="button"
                     onClick={() => update('cover_image', null)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-destructive"
+                    className={`${smallButton} text-destructive`}
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Remove
                   </button>
@@ -424,35 +408,51 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
                 onChange={(e) => update('cover_image', e.target.value || null)}
                 placeholder="…or paste an image URL"
               />
+              <p className="mt-2 text-xs text-muted-foreground">
+                The card and banner image. Landscape works best.
+              </p>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Gallery
-            </h3>
+          <div className={card}>
+            <h3 className={cardTitle}>Gallery</h3>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              The photographs shown as “More from this event” at the foot of the page. Each one can
+              also be placed in the write-up itself, from here.
+            </p>
+
             {draft.gallery.length > 0 && (
-              <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="mt-4 grid grid-cols-2 gap-2">
                 {draft.gallery.map((src, i) => (
-                  <button
-                    key={src.slice(0, 60) + i}
-                    type="button"
-                    onClick={() => update('gallery', draft.gallery.filter((_, j) => j !== i))}
-                    title="Remove this image"
-                    className="group relative overflow-hidden rounded-lg border border-border"
-                  >
-                    <img src={src} alt="" className="aspect-square w-full object-cover" />
-                    <span className="absolute inset-0 hidden items-center justify-center bg-black/50 text-white group-hover:flex">
-                      <Trash2 className="h-4 w-4" />
-                    </span>
-                  </button>
+                  <div key={src + i} className="group relative overflow-hidden rounded-lg border border-border">
+                    <img src={src} alt="" className="aspect-[4/3] w-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/55 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <button
+                        type="button"
+                        title="Place this photograph in the write-up"
+                        onClick={() => writeUp.current?.insertImage(src, altFromFileName(src))}
+                        className="inline-flex items-center gap-1 rounded-lg bg-background px-2.5 py-1.5 text-xs font-semibold hover:text-primary"
+                      >
+                        <Plus className="h-3 w-3" /> Insert
+                      </button>
+                      <button
+                        type="button"
+                        title="Remove this photograph from the gallery"
+                        onClick={() => update('gallery', draft.gallery.filter((_, j) => j !== i))}
+                        className="rounded-lg bg-background p-1.5 text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
+
             <button
               type="button"
               onClick={() => galleryInput.current?.click()}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary"
+              className={`mt-3 ${smallButton}`}
             >
               {uploading === 'gallery' ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -478,10 +478,8 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Credit
-            </h3>
+          <div className={card}>
+            <h3 className={cardTitle}>Credit</h3>
             <div className="mt-4 space-y-4">
               <div>
                 <label className={label} htmlFor="credit">Originally published by</label>
