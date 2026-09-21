@@ -178,11 +178,17 @@ try {
   })
 
   await check('a write-up arrives whole', async () => {
+    const archive = JSON.parse(await readFile(path.join(root, 'public/content/events.json'), 'utf8'))
+    const longest = archive.reduce((a, b) => ((a.body?.length ?? 0) > (b.body?.length ?? 0) ? a : b))
     const { json } = await api('/api/events')
-    const longest = json.events.reduce((a, b) => (a.body.length > b.body.length ? a : b))
-    assert(longest.body.length === 13639, `the longest write-up is ${longest.body.length} characters`)
-    assert(longest.body.includes('##'), 'the write-up looks empty')
-    return `${longest.slug}, ${longest.body.length} characters`
+    const served = json.events.find((event) => event.slug === longest.slug)
+    assert(served, `${longest.slug} is missing from the public list`)
+    assert(
+      served.body === longest.body,
+      `${longest.slug} came back ${served.body.length} characters, the archive holds ${longest.body.length}`,
+    )
+    assert(served.body.includes('##'), 'the write-up looks empty')
+    return `${longest.slug}, ${longest.body.length} characters, byte for byte`
   })
 
   await check('the site copy is untouched, and readable', async () => {

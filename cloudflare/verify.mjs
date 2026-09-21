@@ -1,14 +1,20 @@
 /**
- * Checks that the event text about to be written into the Cloudflare database
- * is the same text the site has been serving.
- *
- * The comparison is between `public/content/events.json` — the archive that
- * seeds D1 — and the SHA-256 of every write-up as it stood in the database the
- * site used before (`cloudflare/migration-receipt.json`, taken from that
- * database on 2026-09-21). Digest against digest, so neither side has to be
- * read, copied or trusted by hand.
+ * Compares the event text in `public/content/events.json` against the SHA-256
+ * of every write-up as it stood in the database the site used before the move
+ * to Cloudflare (`cloudflare/migration-receipt.json`, taken from that database
+ * on 2026-09-21). Digest against digest, so neither side has to be read,
+ * copied or trusted by hand.
  *
  *   node cloudflare/verify.mjs
+ *
+ * The migration itself is settled and was verified at the time: all twelve
+ * events matched byte for byte. The receipt is kept because it is also the only
+ * record of what the archive looked like on that date, which makes this script
+ * a way to see everything written into the archive since. A failure therefore
+ * now means "these write-ups have been edited", not "the migration went
+ * wrong" — and it lists the slug and field of each one, so an intentional edit
+ * is easy to recognise. Deliberately edited so far: the five events whose
+ * subject was rewritten to the DKU AI Club on 2026-09-21.
  */
 
 import { createHash } from 'node:crypto'
