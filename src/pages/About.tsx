@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Mail, Sparkles, Users, Wrench } from 'lucide-react'
+import { ArrowRight, Mail, Sparkles, Users, Wrench } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import type { SiteSettings } from '@/lib/types'
 
@@ -58,18 +58,16 @@ export function About({ settings }: { settings: SiteSettings }) {
             <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Club history
             </h2>
-            <ol className="mt-6 space-y-8 border-l border-border pl-7">
-              {settings.history.map((h) => (
-                <li key={h.period} className="relative">
-                  <span className="absolute -left-[33px] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-accent" />
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">
-                    {h.period}
-                  </div>
-                  <h3 className="mt-1.5 font-semibold tracking-tight">{h.title}</h3>
-                  <p className="mt-1.5 text-lg leading-relaxed text-muted-foreground">{h.body}</p>
-                </li>
-              ))}
-            </ol>
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              The club was founded in 2024 by ten students, on the argument that artificial
+              intelligence belongs to every major.
+            </p>
+            <Link
+              to="/history"
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+            >
+              Read our history <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
 
           <div className="rounded-2xl bg-primary p-7 text-primary-foreground">
@@ -104,13 +102,6 @@ export function About({ settings }: { settings: SiteSettings }) {
               ))}
             </ul>
           </div>
-
-          <Link
-            to="/events"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-          >
-            Browse everything we have run →
-          </Link>
         </aside>
       </div>
     </div>

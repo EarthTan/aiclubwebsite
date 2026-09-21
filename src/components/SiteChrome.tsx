@@ -2,6 +2,11 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+// Imported rather than linked out of `public/`, so the mark travels through the
+// build like every other asset — fingerprinted, and correct whatever the site is
+// served from.
+import clubMark from '@/assets/logo.svg'
+import clubMarkWhite from '@/assets/logo-white.svg'
 
 const NAV = [
   { to: '/', label: 'Home', end: true },
@@ -44,9 +49,9 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-8">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src={overImage ? './logo-white.png' : './logo.png'}
-            alt="DKU AI Club"
-            className="h-9 w-9"
+            src={overImage ? clubMarkWhite : clubMark}
+            alt=""
+            className="h-9 w-9 shrink-0"
           />
           <span
             className={cn(
@@ -137,7 +142,7 @@ export function SiteFooter({ settings }: { settings: { club_name: string; contac
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-3">
         <div>
           <div className="flex items-center gap-3">
-            <img src="./logo.png" alt="" className="h-8 w-8" />
+            <img src={clubMark} alt="" className="h-8 w-8 shrink-0" />
             <span className="font-semibold tracking-tight">{settings.club_name}</span>
           </div>
           <p className="mt-4 max-w-sm text-lg leading-relaxed text-muted-foreground">

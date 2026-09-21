@@ -49,9 +49,12 @@ export interface ArchivedEvent {
   end_date: string | null
 }
 
+/** One phase of the club's history, as the `/history` page lays it out. */
 export interface HistoryEntry {
+  /** The date label shown above the headline, e.g. `January – May 2025`. */
   period: string
   title: string
+  /** Markdown. A phase may run to several paragraphs. */
   body: string
 }
 
@@ -67,6 +70,11 @@ export interface SiteSettings {
   about_lead: string
   /** The full introduction, used on the about page. */
   about_body: string
+  /** Heading of the `/history` page. */
+  history_title: string
+  /** One paragraph standing between that heading and the timeline. */
+  history_lead: string
+  /** The phases of the club's history, oldest first. */
   history: HistoryEntry[]
   contact_email: string
   contact_note: string

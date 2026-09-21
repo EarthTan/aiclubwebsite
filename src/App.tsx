@@ -5,6 +5,7 @@ import { SiteProvider, useSite } from '@/lib/store'
 import { About } from '@/pages/About'
 import { EventDetail } from '@/pages/EventDetail'
 import { Events } from '@/pages/Events'
+import { History } from '@/pages/History'
 import { Home } from '@/pages/Home'
 import { NotFound } from '@/pages/NotFound'
 import { AdminEventForm } from '@/pages/admin/AdminEventForm'
@@ -40,6 +41,7 @@ function Shell() {
           <Route path="/events" element={<Events events={events} />} />
           <Route path="/events/:slug" element={<EventDetail events={events} />} />
           <Route path="/about" element={<About settings={settings} />} />
+          <Route path="/history" element={<History settings={settings} />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminEvents />} />
             <Route path="events/new" element={<AdminEventForm settings={settings} />} />

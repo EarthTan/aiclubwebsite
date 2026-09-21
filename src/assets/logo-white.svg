@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290.18 290.18" role="img" aria-label="DKU AI Club">
+  <!-- The mark reversed out in white, for the transparent navigation bar that
+       sits over the photograph on the home page. The N stays a hole, as it is
+       in the club's own white lockup. -->
+  <defs>
+    <mask id="dku-ai-club-knockout" maskUnits="userSpaceOnUse" x="0" y="0" width="290.18" height="290.18">
+      <rect width="290.18" height="290.18" fill="#000000" />
+      <g transform="translate(-10.591 -120.041)">
+        <rect x="56.27" y="165.72" width="198.82" height="198.82" fill="#ffffff" />
+        <rect
+          x="56.27"
+          y="165.72"
+          width="198.82"
+          height="198.82"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="9"
+          transform="rotate(-45 155.68 265.13)"
+        />
+        <polygon points="135.1 223.04 91.8 298.04 178.4 298.04" fill="#000000" />
+        <rect x="171.72" y="223.04" width="39.36" height="75" fill="#000000" />
+      </g>
+    </mask>
+  </defs>
+  <rect width="290.18" height="290.18" fill="#ffffff" mask="url(#dku-ai-club-knockout)" />
+</svg>

@@ -280,12 +280,32 @@ export function AdminSettings() {
           </button>
         </div>
         <div className="mt-4 space-y-4">
+          <div>
+            <label className={label} htmlFor="histtitle">Page heading</label>
+            <input id="histtitle" className={input} value={draft.history_title}
+              onChange={(e) => update('history_title', e.target.value)} />
+          </div>
+          <div>
+            <label className={label} htmlFor="histlead">Page introduction</label>
+            <textarea id="histlead" rows={3} className={input} value={draft.history_lead}
+              onChange={(e) => update('history_lead', e.target.value)} />
+            <p className="mt-2 text-xs text-muted-foreground">
+              One paragraph, standing between the heading and the timeline.
+            </p>
+          </div>
+        </div>
+
+        <p className="mt-7 text-xs text-muted-foreground">
+          Phases run oldest first. Each body is Markdown, so a phase can carry several paragraphs —
+          separate them with a blank line.
+        </p>
+        <div className="mt-4 space-y-4">
           {draft.history.map((h, i) => (
             <div key={i} className="grid gap-3 rounded-xl bg-secondary/40 p-4 md:grid-cols-[10rem_1fr_auto]">
               <input
                 className={input}
                 value={h.period}
-                placeholder="2026 – 2027"
+                placeholder="January – May 2025"
                 onChange={(e) =>
                   update('history', draft.history.map((x, j) => (j === i ? { ...x, period: e.target.value } : x)))
                 }
@@ -300,10 +320,10 @@ export function AdminSettings() {
                   }
                 />
                 <textarea
-                  rows={3}
-                  className={input}
+                  rows={8}
+                  className={`${input} font-mono text-[13px] leading-relaxed`}
                   value={h.body}
-                  placeholder="What changed in this period."
+                  placeholder="What happened in this period."
                   onChange={(e) =>
                     update('history', draft.history.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))
                   }

@@ -41,16 +41,42 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     'At DKU, the AI Club turns curiosity about artificial intelligence into workshops, talks, hackathons and industry visits. Everything we run is student-led and open to every major, with no prior experience expected.',
   about_body:
     'At DKU, our artificial intelligence club is more than a study group. We bring together students from computer science, finance, biology, design and the social sciences to work on the questions that AI raises in practice: how models are built, how they are evaluated, and what happens when they meet real users.\n\nOur programme runs across a full academic year — hands-on workshops, guest talks with researchers and practitioners, cross-disciplinary competitions, and field trips to the companies building the technology. Everything we run is student-led, and everything we run is open to members with no prior background.',
+  history_title: 'Our history',
+  history_lead:
+    'The DKU AI Club began in the autumn of 2024, with a proposal written by ten students on the argument that artificial intelligence should not belong to a single major. What follows is how that proposal became a club, and what it ran in its first semester.',
+  // Each phase carries Markdown: a long one runs to several paragraphs, and the
+  // rolls of names live inside the prose rather than in a list beside it.
   history: [
     {
-      period: '2025 – 2026',
-      title: 'A first full year of programming',
-      body: 'The club established a regular rhythm of workshops, information sessions and industry nights, and worked alongside partner organizations on the Digital Innovation Challenge, HackDKU and the DKU iGEM team.',
+      period: 'August 2024',
+      title: 'Before there was a club',
+      body: `On 26 August 2024, Jiahe (Jay) Chen wrote to Prof. Luyao Zhang to ask whether she would act as the club's faculty advisor. The message described the club as something being started rather than something that already existed — a group that would run applied sessions on artificial intelligence, beginning with prompt engineering and a few tools worth knowing about. Prof. Zhang agreed the same morning, and named the step that came next: a formal application to the university's student organization office.
+
+The proposal that followed set the terms the club still works on. It argued that AI is reshaping how people work while remaining, for most students, something that appears to belong to computer science — and that this was precisely the reason to build a club for the general student body rather than for one department. Membership was deliberately not restricted by major or by prior experience, and three commitments were written down: making AI legible to students in every discipline, giving members the support to turn AI-related ideas into working projects, and connecting them with people already working in the field.
+
+One detail in that document is worth keeping. Its hackathon was specified as a competition in which AI is **required** rather than banned, so that participants would practise directing a model to write code, on the reasoning that the ability to solve a problem matters more than fluency in a programming language. The students who signed the proposal were Jiahe Chen, Yuhan Wei, Ruisheng Sun, Qianhui Huang, Junyan Li, Rime Tessa, Jingfeng Chen, Zihan Chen, Jiesen Huang and Shengyang Wang. Its first officers were Jiahe Chen as President, Ruisheng Sun as Secretary, Yuhan Wei as Treasurer and Qianhui Huang as Social Media Director.`,
     },
     {
-      period: '2026 Fall',
-      title: 'Beyond ChatGPT',
-      body: 'Our flagship session of the new semester brought the club together with the DKU iGEM 2026 team to trace how artificial intelligence moved from a research idea to a tool students use every day.',
+      period: 'December 2024',
+      title: 'The first board meeting',
+      body: `On 29 December 2024 the club held its first board meeting. The deck it opened with was plain about what the club was: a student club, student-centred, technical and applied, drawing on academic and non-academic backgrounds alike. Underneath sat a three-tier structure that has lasted — officers who make decisions, active members who carry them out, and the wider DKU community the club exists to serve.
+
+The officer list had already changed in the months since the proposal. Haoxin Feng had joined Ruisheng Sun as Vice President and taken responsibility for media; Ruisheng Sun had added the secretary's role; Yuhan Wei had become a project leader; and Prof. Luyao Zhang was confirmed as advisor. The meeting then set out the semester ahead, which the deck itself labelled the club's third session: a club expo built around playful demonstrations, a kickoff that would introduce AI through a product rather than a lecture, a fintech forum run with the Finance Club, workshops in prompt engineering and video generation, and a tour of a local technology company. Four further ideas were listed for the sessions after that — AI in high school, in the humanities and in art — each of which would need a partner outside the club. The last slide read: **Dream Big**.`,
+    },
+    {
+      period: 'January – May 2025',
+      title: 'The first semester',
+      body: `Club Expo on 10 January 2025 was the first time the club appeared in public, and it was built for people walking past rather than for a seated audience: cartoon portraits generated from photographs of passers-by, video generated the same way, and a description of the club short enough to read while standing — who we are, what we are trying to do, what we run, and why to join. Recruitment for the core team opened at the same table.
+
+Ten sessions followed before the semester ended: a kickoff, then workshops in AI writing, AI in film and diffusion models; a fintech forum with the Finance Club; a computer-science information session for students choosing a major; sessions on AI policy and on technology in finance; and HackDKU, which the club helped run in April.
+
+Three words were put on a slide at the end of the term to describe what the year had been about — innovation, interdisciplinary, international. They were the same three ideas the founding proposal had argued for, and they became the club's stated values.
+
+By the end of that first semester the board had grown to seven students and an advisor. Jiahe (Jay) Chen was President; Ruisheng Sun was Vice President and Program Manager; Zihan Chen and Xiaomu Hong were Program Managers; Ximin Yu was Director of Communications; Ke Ning was Director of Operations; Qianhui Huang was Treasurer; and Prof. Luyao Zhang was Faculty Advisor. Six student leaders sat on an advisory board alongside them: Kaiqi Wu ('24), an AI film specialist; Ruikang Wang ('26), SLB co-chair; Beilong Tang ('25), an AI researcher; Yuanjun Du ('27), President of the Finance Club; Guangzhi Su ('26), President of the CS Club; and Haoxin Feng ('26), an emeritus board member. Beneath the board, eight officers ran communications and operations — Andi Wan, Ruoying Wang, Yu Sun, Jiesen Huang and Chen Chen in communications, Siqi Rui, Luyao Xu and Fengyu Zou in operations — together with seventeen active members: Runqi Li, Dilnoza Tirkashova, Tony Li, Weijia Han, Tianyi Xie, Zhongyan Li, Rabin Mahatara, Leyan Zhang, Haoxuan Zhang, Runtian Shi, Yuelin Hou, Zichun Guo, Chi Zhang, Yifan Wu, Ruitian Shi, Kundi Wang and Eunice Gu.
+
+The term closed with a formal note of thanks to Haoxin Feng, who had served as Vice President and Director of Communications, designed the club's logo, and founded the club's media team.
+
+One thing came out of that semester that the club had not planned for. YAS — the Youth AI Society — began inside the club as an education-technology initiative and was accepted into the university's innovation incubator (Dii). Its programme was still undecided when the term ended: a website, a budget and a first cohort of students were on the list, along with whatever the membership brought to the next meeting.`,
     },
   ],
   contact_email: 'dkuaiclub@outlook.com',
