@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Palette taken from the club logo: deep blue #083978, green #006C3E, ink #231815 */
+    --background: 0 0% 100%;
+    --foreground: 12 18% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 12 18% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 12 18% 11%;
+    --primary: 214 88% 25%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 30% 96%;
+    --secondary-foreground: 214 88% 22%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 154 73% 21%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 89%;
+    --input: 214 20% 87%;
+    --ring: 214 88% 25%;
+    --radius: 0.75rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 12 18% 20%;
+    --sidebar-primary: 214 88% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 30% 96%;
+    --sidebar-accent-foreground: 214 88% 22%;
+    --sidebar-border: 214 20% 89%;
+    --sidebar-ring: 214 88% 25%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /*
+      One step up from the browser default (16px → 17px). Every Tailwind size in
+      this project is expressed in rem, so this lifts the type scale, the spacing
+      scale and the container widths together, and nothing falls out of
+      proportion. A percentage rather than a pixel value keeps a reader's own
+      browser font-size preference meaningful.
+    */
+    font-size: 106.25%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue",
+      "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+}
+
+/* Long-form article typography for event write-ups.
+   Body copy uses the same size as every other paragraph on the site
+   (`.text-lg`, i.e. 1.125rem) — only the leading is looser. */
+.article-body {
+  @apply text-lg leading-[1.8] text-foreground/85;
+}
+.article-body > * + * {
+  @apply mt-5;
+}
+.article-body h2 {
+  @apply mt-12 text-2xl font-semibold tracking-tight text-foreground;
+}
+.article-body h3 {
+  @apply mt-9 text-xl font-semibold tracking-tight text-foreground;
+}
+.article-body p {
+  @apply leading-[1.8];
+}
+.article-body a {
+  @apply font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary;
+}
+.article-body strong {
+  @apply font-semibold text-foreground;
+}
+.article-body ul {
+  @apply list-disc space-y-2 pl-6;
+}
+.article-body ol {
+  @apply list-decimal space-y-2 pl-6;
+}
+.article-body blockquote {
+  @apply border-l-4 border-primary/25 pl-5 italic text-muted-foreground;
+}
+.article-body img {
+  @apply w-full rounded-xl border border-border/70 bg-muted object-cover;
+}
+.article-body hr {
+  @apply my-12 border-border;
+}
+.article-body code {
+  @apply rounded bg-muted px-1.5 py-0.5 text-[0.9em];
+}
