@@ -149,12 +149,14 @@ npx wrangler r2 bucket create dku-ai-club-images
 npm run cf:seed                                      # 生成 cloudflare/seed.sql 与站点密钥
 npx wrangler d1 execute dku-ai-club --remote --file cloudflare/schema.sql
 npx wrangler d1 execute dku-ai-club --remote --file cloudflare/seed.sql
-npm run cf:deploy                                    # build + wrangler deploy
+npm run cf:deploy                                    # 第一次发布；仓库接上 GitHub 后不再用它
 ```
 
 部署完成后在 Cloudflare 控制台的 Worker → Settings → Domains & Routes 里绑定自有域名，证书由 Cloudflare 自动签发。
 
 站点上线之后不要再执行 `cf:seed` 与 `seed.sql`：前者会重写密钥，后者会把数据库里的密钥换成种子文件里那一把。事件内容本身不会被覆盖。
+
+**日常发布不用 `cf:deploy`。** 仓库接上 GitHub 之后，把代码推到 `main`，Cloudflare 会构建出一个新版本，进控制台把这个新版本**设为公开版本**才会上线——「推送成功」不等于「线上已更新」。完整流程见 **[DEPLOY.md](DEPLOY.md)** 第十五节。
 
 ## 素材与版权
 
