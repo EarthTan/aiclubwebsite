@@ -1,13 +1,54 @@
-import { useEffect, useState } from 'react'
-import { KeyRound, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { MarkdownEditor } from '@/components/MarkdownEditor'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ChevronDown, KeyRound, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { LazyMarkdownEditor } from '@/components/LazyMarkdownEditor'
 import { saveSettings, replaceSiteKey, storeImage } from '@/lib/data'
 import { useSite } from '@/lib/store'
+import { cn } from '@/lib/utils'
 import type { SiteSettings } from '@/lib/types'
 
 const label = 'mb-2 block text-sm font-medium'
 const input =
   'w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15'
+
+/**
+ * A card whose contents are put away until they are asked for.
+ *
+ * The about copy and the club history are each a heading, a paragraph and a
+ * full writing surface, and between them they ran to several screens — the
+ * settings somebody comes to this page for were somewhere below them. The whole
+ * heading row is the way in, rather than a small arrow beside it.
+ *
+ * What is inside is not rendered while the card is shut, which keeps four
+ * writing surfaces off the page until they are wanted. That is safe because the
+ * form saves the draft it holds in state rather than reading values back off
+ * the page, and an edit is written into that draft as it is typed — so shutting
+ * a card loses nothing, including its own unfinished work, which is back in
+ * place the moment it is opened again.
+ */
+function FoldedSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-6 rounded-2xl border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="group flex w-full items-center justify-between gap-4 rounded-2xl p-5 text-left"
+      >
+        <span className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors group-hover:text-foreground">
+          {title}
+        </span>
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-foreground',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </div>
+  )
+}
 
 export function AdminSettings() {
   const { settings, reload } = useSite()
@@ -142,11 +183,8 @@ export function AdminSettings() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-border p-5">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          About the club
-        </h3>
-        <div className="mt-4 space-y-4">
+      <FoldedSection title="About the club">
+        <div className="space-y-4">
           <div>
             <label className={label} htmlFor="atitle">Heading</label>
             <input id="atitle" className={input} value={draft.about_title}
@@ -162,7 +200,7 @@ export function AdminSettings() {
           </div>
           <div>
             <span className={label}>Body (Markdown)</span>
-            <MarkdownEditor
+            <LazyMarkdownEditor
               documentId="about-body"
               value={draft.about_body}
               onChange={(about_body) => update('about_body', about_body)}
@@ -176,24 +214,10 @@ export function AdminSettings() {
             </p>
           </div>
         </div>
-      </div>
+      </FoldedSection>
 
-      <div className="mt-6 rounded-2xl border border-border p-5">
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Club history
-          </h3>
-          <button
-            type="button"
-            onClick={() =>
-              update('history', [...draft.history, { period: '', title: '', body: '' }])
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add entry
-          </button>
-        </div>
-        <div className="mt-4 space-y-4">
+      <FoldedSection title="Club history">
+        <div className="space-y-4">
           <div>
             <label className={label} htmlFor="histtitle">Page heading</label>
             <input id="histtitle" className={input} value={draft.history_title}
@@ -209,10 +233,23 @@ export function AdminSettings() {
           </div>
         </div>
 
-        <p className="mt-7 text-xs text-muted-foreground">
-          Phases run oldest first. Each body is Markdown, so a phase can carry several paragraphs —
-          separate them with a blank line.
-        </p>
+        <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-[14rem] flex-1 text-xs text-muted-foreground">
+            Phases run oldest first. Each body is Markdown, so a phase can carry several paragraphs —
+            separate them with a blank line.
+          </p>
+          {/* Adding a phase belongs inside the section rather than on its lid:
+              a new entry is only visible once the list below is open. */}
+          <button
+            type="button"
+            onClick={() =>
+              update('history', [...draft.history, { period: '', title: '', body: '' }])
+            }
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add entry
+          </button>
+        </div>
         <div className="mt-4 space-y-4">
           {draft.history.map((h, i) => (
             <div key={i} className="grid gap-3 rounded-xl bg-secondary/40 p-4 md:grid-cols-[10rem_1fr_auto]">
@@ -233,7 +270,7 @@ export function AdminSettings() {
                     update('history', draft.history.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))
                   }
                 />
-                <MarkdownEditor
+                <LazyMarkdownEditor
                   documentId={`history-${i}`}
                   value={h.body}
                   onChange={(body) =>
@@ -259,7 +296,7 @@ export function AdminSettings() {
             <p className="text-sm text-muted-foreground">No history entries yet.</p>
           )}
         </div>
-      </div>
+      </FoldedSection>
 
       <div className="mt-6 rounded-2xl border border-border p-5">
         <div className="flex items-center justify-between gap-4">

@@ -161,6 +161,9 @@ function Preview() {
               onUpload={upload}
               onError={(message) => setLog((l) => [message, ...l])}
               minHeightClass="min-h-[36rem]"
+              // This page has no site header above the editor, so the bar
+              // parks against the top of the window rather than below one.
+              stickyOffsetClass="top-0"
               placeholder="A new write-up starts here."
             />
             <details className="mt-4 rounded-xl border border-border p-4">

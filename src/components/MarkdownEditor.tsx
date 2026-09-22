@@ -67,7 +67,7 @@ export interface MarkdownEditorHandle {
   focus: () => void
 }
 
-interface MarkdownEditorProps {
+export interface MarkdownEditorProps {
   /** The write-up, as Markdown. The single source of truth for its contents. */
   value: string
   onChange: (markdown: string) => void
@@ -87,6 +87,14 @@ interface MarkdownEditorProps {
   placeholder?: string
   /** Tailwind height utilities for the writing area, e.g. `min-h-[32rem]`. */
   minHeightClass?: string
+  /**
+   * Where the controls park while the write-up scrolls past, e.g. `top-16`.
+   *
+   * The default clears the site header, which is what the panel sits beneath.
+   * A page without that header wants `top-0`, or the bar will hang a header's
+   * height below the top of the window with the page showing through above it.
+   */
+  stickyOffsetClass?: string
   onError?: (message: string) => void
   className?: string
 }
@@ -181,7 +189,17 @@ const SMALL_BUTTON =
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
   function MarkdownEditor(
-    { value, onChange, onUpload, documentId, placeholder, minHeightClass, onError, className },
+    {
+      value,
+      onChange,
+      onUpload,
+      documentId,
+      placeholder,
+      minHeightClass,
+      stickyOffsetClass = 'top-16',
+      onError,
+      className,
+    },
     ref,
   ) {
     const [mode, setMode] = useState<'rich' | 'source'>('rich')
@@ -509,254 +527,276 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
 
     return (
       <div className={className}>
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-1 rounded-t-xl border border-b-0 border-input bg-secondary/40 px-2 py-1.5">
-          <ToolGroup>
-            <ToolButton
-              title={`Undo (${shortcut}Z)`}
-              disabled={!state?.canUndo}
-              onClick={() => editorRef.current?.chain().focus().undo().run()}
-            >
-              <Undo2 className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title={`Redo (${shortcut}${isMac() ? '⇧Z' : 'Y'})`}
-              disabled={!state?.canRedo}
-              onClick={() => editorRef.current?.chain().focus().redo().run()}
-            >
-              <Redo2 className="h-4 w-4" />
-            </ToolButton>
-          </ToolGroup>
+        {/*
+          The controls stay on screen while the write-up scrolls past them.
 
-          <Divider />
+          A write-up runs to many screens, and a bar that leaves the top of the
+          window is a bar that has to be scrolled back to; reaching for bold on
+          the fourth screen should not cost the first. The row that sets a link
+          and the row that describes a photograph are pinned with it, because
+          both are filled in while looking at the words they act on — and the
+          link field takes focus, which would otherwise scroll the page back to
+          where the bar used to be.
 
-          <ToolGroup>
-            <ToolButton
-              title="Heading"
-              active={state?.h2}
-              onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 2 }).run()}
-            >
-              <Heading2 className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Subheading"
-              active={state?.h3}
-              onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 3 }).run()}
-            >
-              <Heading3 className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Ordinary paragraph"
-              active={Boolean(state && !state.heading)}
-              onClick={() => editorRef.current?.chain().focus().setParagraph().run()}
-            >
-              <Pilcrow className="h-4 w-4" />
-            </ToolButton>
-          </ToolGroup>
+          The solid background belongs to the wrapper, not to the bar: the bar
+          itself is a translucent tint, and a translucent tint over the words
+          sliding underneath it would read as a smudge. Solid underneath, tint
+          on top — the same colour it has always been, now opaque.
 
-          <Divider />
+          `stickyOffsetClass` says where it parks — by default a header's height
+          down, since the panel sits below one — and `z-20` puts it above the
+          picture grips but below that header.
+        */}
+        <div className={cn('sticky z-20 bg-background', stickyOffsetClass)}>
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-1 rounded-t-xl border border-b-0 border-input bg-secondary/40 px-2 py-1.5">
+            <ToolGroup>
+              <ToolButton
+                title={`Undo (${shortcut}Z)`}
+                disabled={!state?.canUndo}
+                onClick={() => editorRef.current?.chain().focus().undo().run()}
+              >
+                <Undo2 className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title={`Redo (${shortcut}${isMac() ? '⇧Z' : 'Y'})`}
+                disabled={!state?.canRedo}
+                onClick={() => editorRef.current?.chain().focus().redo().run()}
+              >
+                <Redo2 className="h-4 w-4" />
+              </ToolButton>
+            </ToolGroup>
 
-          <ToolGroup>
-            <ToolButton
-              title={`Bold (${shortcut}B)`}
-              active={state?.bold}
-              onClick={() => editorRef.current?.chain().focus().toggleBold().run()}
-            >
-              <Bold className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title={`Italic (${shortcut}I)`}
-              active={state?.italic}
-              onClick={() => editorRef.current?.chain().focus().toggleItalic().run()}
-            >
-              <Italic className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title={`Underline (${shortcut}U)`}
-              active={state?.underline}
-              onClick={() => editorRef.current?.chain().focus().toggleUnderline().run()}
-            >
-              <Underline className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Strikethrough"
-              active={state?.strike}
-              onClick={() => editorRef.current?.chain().focus().toggleStrike().run()}
-            >
-              <Strikethrough className="h-4 w-4" />
-            </ToolButton>
-          </ToolGroup>
+            <Divider />
 
-          <Divider />
+            <ToolGroup>
+              <ToolButton
+                title="Heading"
+                active={state?.h2}
+                onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 2 }).run()}
+              >
+                <Heading2 className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Subheading"
+                active={state?.h3}
+                onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 3 }).run()}
+              >
+                <Heading3 className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Ordinary paragraph"
+                active={Boolean(state && !state.heading)}
+                onClick={() => editorRef.current?.chain().focus().setParagraph().run()}
+              >
+                <Pilcrow className="h-4 w-4" />
+              </ToolButton>
+            </ToolGroup>
 
-          <ToolGroup>
-            <ToolButton
-              title="Bulleted list"
-              active={state?.bullet}
-              onClick={() => editorRef.current?.chain().focus().toggleBulletList().run()}
-            >
-              <List className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Numbered list"
-              active={state?.ordered}
-              onClick={() => editorRef.current?.chain().focus().toggleOrderedList().run()}
-            >
-              <ListOrdered className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Quoted passage"
-              active={state?.quote}
-              onClick={() => editorRef.current?.chain().focus().toggleBlockquote().run()}
-            >
-              <Quote className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              title="Divider line"
-              onClick={() => editorRef.current?.chain().focus().setHorizontalRule().run()}
-            >
-              <Minus className="h-4 w-4" />
-            </ToolButton>
-          </ToolGroup>
+            <Divider />
 
-          <Divider />
+            <ToolGroup>
+              <ToolButton
+                title={`Bold (${shortcut}B)`}
+                active={state?.bold}
+                onClick={() => editorRef.current?.chain().focus().toggleBold().run()}
+              >
+                <Bold className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title={`Italic (${shortcut}I)`}
+                active={state?.italic}
+                onClick={() => editorRef.current?.chain().focus().toggleItalic().run()}
+              >
+                <Italic className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title={`Underline (${shortcut}U)`}
+                active={state?.underline}
+                onClick={() => editorRef.current?.chain().focus().toggleUnderline().run()}
+              >
+                <Underline className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Strikethrough"
+                active={state?.strike}
+                onClick={() => editorRef.current?.chain().focus().toggleStrike().run()}
+              >
+                <Strikethrough className="h-4 w-4" />
+              </ToolButton>
+            </ToolGroup>
 
-          <ToolGroup>
-            <ToolButton
-              title="Link"
-              active={state?.link || linkOpen}
-              onClick={() => {
-                setLinkDraft((editorRef.current?.getAttributes('link').href as string) ?? '')
-                setLinkOpen((open) => !open)
-              }}
-            >
-              <Link2 className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton title="Insert a photograph" onClick={() => bodyInput.current?.click()}>
-              <ImagePlus className="h-4 w-4" />
-            </ToolButton>
-          </ToolGroup>
+            <Divider />
 
-          <span className="ml-auto flex items-center gap-2 pl-2">
-            {uploads > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Uploading {uploads === 1 ? 'a photograph' : `${uploads} photographs`}…
-              </span>
-            )}
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={toggleSource}
-              title={mode === 'rich' ? 'Edit the underlying Markdown' : 'Back to the formatted view'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {mode === 'rich' ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {mode === 'rich' ? 'Markdown' : 'Formatted'}
-            </button>
-          </span>
-        </div>
+            <ToolGroup>
+              <ToolButton
+                title="Bulleted list"
+                active={state?.bullet}
+                onClick={() => editorRef.current?.chain().focus().toggleBulletList().run()}
+              >
+                <List className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Numbered list"
+                active={state?.ordered}
+                onClick={() => editorRef.current?.chain().focus().toggleOrderedList().run()}
+              >
+                <ListOrdered className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Quoted passage"
+                active={state?.quote}
+                onClick={() => editorRef.current?.chain().focus().toggleBlockquote().run()}
+              >
+                <Quote className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton
+                title="Divider line"
+                onClick={() => editorRef.current?.chain().focus().setHorizontalRule().run()}
+              >
+                <Minus className="h-4 w-4" />
+              </ToolButton>
+            </ToolGroup>
 
-        {/* Where a link should point */}
-        {linkOpen && mode === 'rich' && (
-          <div className="flex flex-wrap items-center gap-2 border-x border-input bg-background px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              {state?.link ? 'Link to' : 'Link the highlighted words to'}
-            </span>
-            <input
-              autoFocus
-              value={linkDraft}
-              onChange={(e) => setLinkDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setLinkOpen(false)
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                applyLink()
-              }}
-              placeholder="https://"
-              className="min-w-[16rem] flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
-            />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={applyLink}
-              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-            >
-              Apply
-            </button>
-            {state?.link && (
+            <Divider />
+
+            <ToolGroup>
+              <ToolButton
+                title="Link"
+                active={state?.link || linkOpen}
+                onClick={() => {
+                  setLinkDraft((editorRef.current?.getAttributes('link').href as string) ?? '')
+                  setLinkOpen((open) => !open)
+                }}
+              >
+                <Link2 className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton title="Insert a photograph" onClick={() => bodyInput.current?.click()}>
+                <ImagePlus className="h-4 w-4" />
+              </ToolButton>
+            </ToolGroup>
+
+            <span className="ml-auto flex items-center gap-2 pl-2">
+              {uploads > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Uploading {uploads === 1 ? 'a photograph' : `${uploads} photographs`}…
+                </span>
+              )}
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  editorRef.current?.chain().focus().unsetLink().run()
-                  setLinkOpen(false)
+                onClick={toggleSource}
+                title={mode === 'rich' ? 'Edit the underlying Markdown' : 'Back to the formatted view'}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {mode === 'rich' ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {mode === 'rich' ? 'Markdown' : 'Formatted'}
+              </button>
+            </span>
+          </div>
+
+          {/* Where a link should point */}
+          {linkOpen && mode === 'rich' && (
+            <div className="flex flex-wrap items-center gap-2 border-x border-input bg-background px-3 py-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                {state?.link ? 'Link to' : 'Link the highlighted words to'}
+              </span>
+              <input
+                autoFocus
+                value={linkDraft}
+                onChange={(e) => setLinkDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setLinkOpen(false)
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  applyLink()
                 }}
+                placeholder="https://"
+                className="min-w-[16rem] flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={applyLink}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              >
+                Apply
+              </button>
+              {state?.link && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    editorRef.current?.chain().focus().unsetLink().run()
+                    setLinkOpen(false)
+                  }}
+                  className={cn(SMALL_BUTTON, 'text-destructive')}
+                >
+                  <Link2Off className="h-3.5 w-3.5" /> Remove
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* The photograph the cursor is sitting on */}
+          {state?.imageSrc && mode === 'rich' && (
+            <div className="flex flex-wrap items-center gap-2 border-x border-input bg-accent/5 px-3 py-2">
+              <span className="text-xs font-medium text-muted-foreground">Photograph</span>
+              {/* Second in the row, and first in usefulness: the order a
+                  photograph sits in is the thing most often wrong. */}
+              <span
+                title="Drag the picture to move it, or step it up and down with these"
+                className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5"
+              >
+                <ToolButton
+                  title="Move it up (Alt+↑)"
+                  disabled={!state.imageCanUp}
+                  onClick={() => nudgeSelectedImage(-1)}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </ToolButton>
+                <ToolButton
+                  title="Move it down (Alt+↓)"
+                  disabled={!state.imageCanDown}
+                  onClick={() => nudgeSelectedImage(1)}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </ToolButton>
+              </span>
+              <input
+                // Re-keyed on the picture itself, so choosing another one starts
+                // this field from that picture's own description.
+                key={state.imageSrc}
+                defaultValue={state.imageAlt}
+                onChange={(e) => setImageAlt(e.target.value)}
+                // The editor usually sits inside the page's own form, where Enter
+                // in a text field would submit and save everything.
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault()
+                }}
+                placeholder="Describe it in a few words, for readers who cannot see it"
+                className="min-w-[16rem] flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => replaceInput.current?.click()}
+                className={cn(SMALL_BUTTON, 'hover:text-primary')}
+              >
+                <ImagePlus className="h-3.5 w-3.5" /> Replace
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={removeSelectedImage}
                 className={cn(SMALL_BUTTON, 'text-destructive')}
               >
-                <Link2Off className="h-3.5 w-3.5" /> Remove
+                <Trash2 className="h-3.5 w-3.5" /> Delete
               </button>
-            )}
-          </div>
-        )}
-
-        {/* The photograph the cursor is sitting on */}
-        {state?.imageSrc && mode === 'rich' && (
-          <div className="flex flex-wrap items-center gap-2 border-x border-input bg-accent/5 px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Photograph</span>
-            {/* Second in the row, and first in usefulness: the order a
-                photograph sits in is the thing most often wrong. */}
-            <span
-              title="Drag the picture to move it, or step it up and down with these"
-              className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5"
-            >
-              <ToolButton
-                title="Move it up (Alt+↑)"
-                disabled={!state.imageCanUp}
-                onClick={() => nudgeSelectedImage(-1)}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </ToolButton>
-              <ToolButton
-                title="Move it down (Alt+↓)"
-                disabled={!state.imageCanDown}
-                onClick={() => nudgeSelectedImage(1)}
-              >
-                <ArrowDown className="h-4 w-4" />
-              </ToolButton>
-            </span>
-            <input
-              // Re-keyed on the picture itself, so choosing another one starts
-              // this field from that picture's own description.
-              key={state.imageSrc}
-              defaultValue={state.imageAlt}
-              onChange={(e) => setImageAlt(e.target.value)}
-              // The editor usually sits inside the page's own form, where Enter
-              // in a text field would submit and save everything.
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.preventDefault()
-              }}
-              placeholder="Describe it in a few words, for readers who cannot see it"
-              className="min-w-[16rem] flex-1 rounded-lg border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
-            />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => replaceInput.current?.click()}
-              className={cn(SMALL_BUTTON, 'hover:text-primary')}
-            >
-              <ImagePlus className="h-3.5 w-3.5" /> Replace
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={removeSelectedImage}
-              className={cn(SMALL_BUTTON, 'text-destructive')}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </button>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {/* The writing area */}
         <div

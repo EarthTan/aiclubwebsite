@@ -20,9 +20,26 @@ export function formatMonth(iso: string): string {
   return `${MONTHS[Number(m[2]) - 1].slice(0, 3)} ${m[1]}`
 }
 
-/** Turns a title into a URL-safe slug. */
-export function slugify(input: string): string {
+/**
+ * How many words of a title a slug keeps.
+ *
+ * A slug is an address, not a summary. Left unbounded, a title that runs to a
+ * full sentence produces an address of sixty-odd characters that nobody can
+ * read, paste or say out loud. Five words is enough to recognise the event by,
+ * and the full title is on the page either way.
+ */
+export const SLUG_WORDS = 5
+
+/** Turns a title into a URL-safe slug, keeping only its first few words. */
+export function slugify(input: string, maxWords: number = SLUG_WORDS): string {
   const base = input
+    // Cut on the words of the title rather than on the finished slug: a word
+    // can contain a hyphen of its own, and splitting the slug afterwards would
+    // count its halves as two words.
+    .trim()
+    .split(/\s+/)
+    .slice(0, maxWords)
+    .join(' ')
     .normalize('NFKD')
     .toLowerCase()
     .replace(/['’"“”]/g, '')

@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { Loader2, LogOut } from 'lucide-react'
 import { useAdmin } from '@/hooks/useAdmin'
@@ -10,6 +11,25 @@ const TABS = [
   { to: '/admin/home', label: 'Home page', end: true },
   { to: '/admin/settings', label: 'Settings', end: false },
 ]
+
+/**
+ * What is drawn while a tab's own code and data are on their way.
+ *
+ * Every tab is fetched when it is first opened, which is the price of keeping
+ * the editor out of the download a reader pays for. That price used to be paid
+ * on the whole panel: the only boundary was above the routes, so a tab that was
+ * still arriving took the heading, the tabs and the answer to "may I open this
+ * at all?" down with it, and all four had to be rebuilt afterwards — including
+ * another check of the key against the database. The boundary now sits inside
+ * the panel, so the surroundings hold still and only this stands in for the tab.
+ */
+function TabArriving() {
+  return (
+    <p className="flex items-center gap-3 py-16 text-muted-foreground" role="status">
+      <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+    </p>
+  )
+}
 
 /** Gate for every administrator route: the key, then the panel. */
 export function AdminLayout() {
@@ -105,7 +125,9 @@ export function AdminLayout() {
       </nav>
 
       <div className="mt-8">
-        <Outlet />
+        <Suspense fallback={<TabArriving />}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   )

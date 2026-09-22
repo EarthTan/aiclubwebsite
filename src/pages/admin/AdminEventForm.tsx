@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { MarkdownEditor, type MarkdownEditorHandle } from '@/components/MarkdownEditor'
+import { LazyMarkdownEditor, type MarkdownEditorHandle } from '@/components/LazyMarkdownEditor'
 import { fetchAllEvents, saveEvent, storeImage, type EventDraft } from '@/lib/data'
 import { altFromFileName } from '@/lib/markdownEditor'
-import { deriveSummary, ROLE_LABEL, slugify } from '@/lib/format'
+import { deriveSummary, ROLE_LABEL, slugify, STATUS_LABEL } from '@/lib/format'
 import { useSite } from '@/lib/store'
+import { cn } from '@/lib/utils'
 import type { EventRecord, SiteSettings } from '@/lib/types'
 
 const label = 'mb-2 block text-sm font-medium'
@@ -15,6 +16,24 @@ const card = 'rounded-2xl border border-border p-5'
 const cardTitle = 'text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground'
 const smallButton =
   'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:text-primary'
+
+/**
+ * The three states in the order the dropdown used to offer them: the most
+ * visible first, the one that takes the event off the site last.
+ */
+const STATUSES: EventDraft['status'][] = ['published', 'draft', 'archived']
+
+/**
+ * What a set of form values looks like as one string.
+ *
+ * Used only to answer "is this the same as what was saved?", which the plain
+ * text of the values answers exactly and cheaply. Every update replaces a key
+ * that already exists, so the order of the fields never changes and two equal
+ * drafts always serialise to the same string.
+ */
+function fingerprint(values: EventDraft): string {
+  return JSON.stringify(values)
+}
 
 function emptyDraft(): EventDraft {
   return {
@@ -66,6 +85,15 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
   const { reload } = useSite()
 
   const [draft, setDraft] = useState<EventDraft>(emptyDraft)
+  /**
+   * The values as the page loaded them, or as the last save left them.
+   *
+   * Everything the form holds is measured against it, which is how the writer
+   * is told that a save is outstanding. Kept as text rather than as a second
+   * draft because the only question ever asked of it is whether it still
+   * matches.
+   */
+  const [saved, setSaved] = useState(() => fingerprint(emptyDraft()))
   const [slugTouched, setSlugTouched] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -83,9 +111,14 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     return [...set]
   }, [settings.categories])
 
+  /** Whether what the form holds has yet to reach the database. */
+  const unsaved = fingerprint(draft) !== saved
+
   useEffect(() => {
     if (isNew) {
-      setDraft(emptyDraft())
+      const fresh = emptyDraft()
+      setDraft(fresh)
+      setSaved(fingerprint(fresh))
       setLoading(false)
       return
     }
@@ -96,7 +129,9 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
         if (!alive) return
         const hit = all.find((e) => e.slug === slug)
         if (hit) {
-          setDraft(toDraft(hit))
+          const loaded = toDraft(hit)
+          setDraft(loaded)
+          setSaved(fingerprint(loaded))
           setSlugTouched(true)
         } else {
           setError('That event could not be found.')
@@ -115,6 +150,9 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
 
   function update<K extends keyof EventDraft>(key: K, value: EventDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
+    // "Saved" stops being true the moment anything is typed over it, and a
+    // green notice sitting above a red one is no help to anybody.
+    setNotice(null)
   }
 
   /** The stem photographs of this event are named under, so the bucket stays readable. */
@@ -152,16 +190,25 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     }
     setSaving(true)
     try {
+      /*
+        The form's own values with the two things the save settles — the slug,
+        and the summary falling back to the first paragraph — made explicit. It
+        is what the panel then holds, so it is also what "unsaved" is measured
+        against; the summary field itself is left as the writer left it, since
+        the fallback is the database's business and not theirs to see change
+        under their hands.
+      */
+      const settled: EventDraft = { ...draft, slug: finalSlug }
       await saveEvent({
-        ...draft,
-        slug: finalSlug,
-        summary: draft.summary.trim() || deriveSummary(draft.body),
+        ...settled,
+        summary: settled.summary.trim() || deriveSummary(settled.body),
       })
       await reload()
       setNotice('Saved. The public site has been updated.')
       if (isNew) navigate(`/admin/events/${finalSlug}`, { replace: true })
       setSlugTouched(true)
-      setDraft((d) => ({ ...d, slug: finalSlug }))
+      setDraft(settled)
+      setSaved(fingerprint(settled))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That change could not be saved.')
     } finally {
@@ -191,7 +238,20 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
             {isNew ? 'Create a new event' : 'Edit event'}
           </h2>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/*
+            Standing beside the button that clears it. A write-up is edited
+            over many screens, and walking away with a save outstanding used to
+            look exactly like walking away having saved.
+          */}
+          {unsaved && (
+            <span
+              role="status"
+              className="inline-flex items-center rounded-full border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs font-medium text-destructive"
+            >
+              Unsaved changes
+            </span>
+          )}
           <button
             type="submit"
             disabled={saving}
@@ -260,7 +320,7 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
 
           <div>
             <label className={label}>Write-up</label>
-            <MarkdownEditor
+            <LazyMarkdownEditor
               ref={writeUp}
               documentId={slug ?? 'new'}
               value={draft.body}
@@ -283,18 +343,41 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
             <h3 className={cardTitle}>Publishing</h3>
             <div className="mt-4 space-y-4">
               <div>
-                <label className={label} htmlFor="status">Status</label>
-                <select
-                  id="status"
-                  className={input}
-                  value={draft.status}
-                  onChange={(e) => update('status', e.target.value as EventDraft['status'])}
-                >
-                  <option value="published">Published</option>
-                  <option value="draft">Draft</option>
-                  <option value="archived">Archived (hidden)</option>
-                </select>
+                <span className={label}>Status</span>
+                {/*
+                  All three at once, with the one in force lit. A dropdown hid
+                  the other two behind a click, which made a decision that
+                  matters — whether the event is on the site, off it, or not yet
+                  written — look like a piece of data entry.
+                */}
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Status">
+                  {STATUSES.map((value) => {
+                    const active = draft.status === value
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => update('status', value)}
+                        className={cn(
+                          'rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors',
+                          active
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-input bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                        )}
+                      >
+                        {STATUS_LABEL[value]}
+                      </button>
+                    )
+                  })}
+                </div>
                 <p className="mt-2 text-xs text-muted-foreground">
+                  {draft.status === 'published'
+                    ? 'On the events list and reachable by its address.'
+                    : draft.status === 'draft'
+                      ? 'Held back until it is published, whatever its date.'
+                      : 'Kept in the library, off the events list.'}{' '}
                   Which events the home page leads with is set on the Home page tab, not here.
                 </p>
               </div>
