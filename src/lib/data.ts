@@ -1,16 +1,27 @@
 import {
   ApiError,
   KEY_REJECTED,
+  SHARE_REJECTED,
+  createEventShare,
   fetchEveryEvent,
+  fetchEventRevision,
+  fetchEventShares,
   fetchPublishedEvents,
+  fetchSharedEvent,
   fetchSettingsValue,
   putEvent,
   putEventStatus,
   putKey,
   putSettings,
+  putSharedEvent,
   removeEvent,
+  restoreEventRevision,
+  revokeEventShare,
   uploadImage,
+  uploadSharedImage,
   verifyKey,
+  type RevisionRow,
+  type ShareLinkRow,
 } from './api'
 import { fileToOptimisedImage } from './image'
 import { readSiteKey, rememberSiteKey } from './siteKey'
@@ -249,9 +260,15 @@ export interface EventDraft {
   source_credit: string | null
 }
 
-/** Creates or overwrites an event row. Keyed on `slug`. */
-export async function saveEvent(draft: EventDraft): Promise<EventRecord[]> {
-  const payload = {
+/**
+ * One event as the server expects it to be sent.
+ *
+ * Shared by the two doors that save an event — the panel and a shared editing
+ * link — so that a link cannot save a subtly different record from the one the
+ * panel would have written.
+ */
+function eventPayload(draft: EventDraft) {
+  return {
     slug: draft.slug,
     title: draft.title,
     summary: draft.summary || deriveSummary(draft.body),
@@ -268,7 +285,11 @@ export async function saveEvent(draft: EventDraft): Promise<EventRecord[]> {
     source_url: draft.source_url,
     source_credit: draft.source_credit,
   }
-  const saved = await guarded(() => putEvent(payload))
+}
+
+/** Creates or overwrites an event row. Keyed on `slug`. */
+export async function saveEvent(draft: EventDraft): Promise<EventRecord[]> {
+  const saved = await guarded(() => putEvent(eventPayload(draft)))
   return [toEvent(saved)]
 }
 
@@ -352,6 +373,102 @@ export async function storeImage(file: File, name: string, maxEdge = 1400): Prom
 }
 
 /* -------------------------------------------------------------------------- */
+/* Shared editing links                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A link to one event, as the panel holds it.
+ *
+ * The token is the link. It is kept here as it came back from the server rather
+ * than being derived from it, because there is nothing to derive: the server
+ * stores it as text so that an administrator can read the URL back a week later
+ * and send it to whoever else needs it.
+ */
+export type ShareLink = ShareLinkRow
+
+/** Issues a link to one event, good for `days` from now. */
+export async function makeShareLink(slug: string, days: number, label: string): Promise<ShareLink> {
+  return guarded(() => createEventShare(slug, days, label))
+}
+
+/** The links standing open for one event. */
+export async function listShareLinks(slug: string): Promise<ShareLink[]> {
+  return guarded(() => fetchEventShares(slug))
+}
+
+/** Takes a link back. Whoever was holding it can no longer open the event. */
+export async function revokeShareLink(token: string): Promise<void> {
+  if (!(await guarded(() => revokeEventShare(token)))) {
+    throw new Error('That link was already gone.')
+  }
+}
+
+/**
+ * The one event a link is for.
+ *
+ * Deliberately not the panel's `fetchAllEvents()` narrowed down: a link holder
+ * is not shown the library, and the server would not answer with it. This is
+ * the only read a link can make.
+ */
+export async function openSharedEvent(token: string): Promise<EventRecord> {
+  return toEvent(await guarded(() => fetchSharedEvent(token)))
+}
+
+/**
+ * Saves the one event a link is for.
+ *
+ * The event's identity and its publishing state are settled by the server from
+ * the link itself, so whatever the page sends for those two is ignored. What
+ * comes back is the row as it now stands, which is what the page then treats as
+ * saved.
+ */
+export async function saveSharedEvent(token: string, draft: EventDraft): Promise<EventRecord> {
+  return toEvent(await guarded(() => putSharedEvent(token, eventPayload(draft))))
+}
+
+/** Shrinks and stores a photograph through a link, answering with its URL. */
+export async function storeSharedImage(
+  token: string,
+  file: File,
+  name: string,
+  maxEdge = 1400,
+): Promise<string> {
+  const blob = await fileToOptimisedImage(file, maxEdge)
+  return guarded(() => uploadSharedImage(token, blob, name))
+}
+
+/* -------------------------------------------------------------------------- */
+/* The version kept from before the last save                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An event as it stood before it was last overwritten.
+ *
+ * This is what makes a shared editing link safe to hand out. Somebody else
+ * writes the event up, and the version that was there when they started is kept
+ * one deep — enough to put back what they replaced or deleted, which is a
+ * smaller thing than a history and does not need one.
+ */
+export type PreviousVersion = RevisionRow
+
+/** The kept version, or nothing when the event has only been saved once. */
+export async function readPreviousVersion(slug: string): Promise<PreviousVersion | null> {
+  return guarded(() => fetchEventRevision(slug))
+}
+
+/**
+ * Puts the kept version back.
+ *
+ * The server does this by saving the kept version over the current one, which
+ * puts the current one into the slot it came out of. Restoring is therefore
+ * itself restorable, and restoring twice lands back where the first restore
+ * started — nothing about that is arranged for here.
+ */
+export async function restorePreviousVersion(slug: string): Promise<EventRecord> {
+  return toEvent(await guarded(() => restoreEventRevision(slug)))
+}
+
+/* -------------------------------------------------------------------------- */
 /* The key that opens the panel                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -363,16 +480,40 @@ export interface AdminState {
 }
 
 /**
- * Turns a refusal from the server into the sentence the panel shows.
+ * Turns a refusal from the server into the sentence the page shows.
  *
  * A key that was replaced on another machine and a key that was never right
- * look identical from here, and are worth the same sentence.
+ * look identical from here, and are worth the same sentence. A refused editing
+ * link is likewise one sentence: whoever is holding it cannot act on the
+ * difference between expired, withdrawn and never issued.
+ *
+ * The code is carried across rather than flattened away, because the page that
+ * was opened with a link has one more thing to do with a refusal than print it
+ * — it needs to know whether this link is finished, so that it can say so
+ * instead of offering a form that cannot save.
  */
 function writeError(err: unknown): Error {
   if (err instanceof ApiError && err.code === KEY_REJECTED) {
-    return new Error('The site key was not accepted. It may have been replaced.')
+    return new ApiError(err.status, 'The site key was not accepted. It may have been replaced.', err.code)
+  }
+  if (err instanceof ApiError && err.code === SHARE_REJECTED) {
+    return new ApiError(
+      err.status,
+      'This editing link is no longer good. It has expired or been taken back.',
+      err.code,
+    )
   }
   return err instanceof Error ? err : new Error('That change was not accepted.')
+}
+
+/**
+ * Whether a failure means the link this page was opened with is finished.
+ *
+ * Only ever true for a page that was opened with one; the panel's own calls
+ * answer with a key refusal instead, which is a different sentence.
+ */
+export function isLinkFinished(err: unknown): boolean {
+  return err instanceof ApiError && err.code === SHARE_REJECTED
 }
 
 /** Runs a call and reports any refusal in the panel's own words. */

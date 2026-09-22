@@ -1,8 +1,45 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+/**
+ * The form that writes one event, used by both doors into the site.
+ *
+ * Without a `token` it is the panel's event form: it reads the library, opens
+ * whichever event the address names, and can publish, draft or archive it.
+ *
+ * With a `token` it is what somebody holding a shared editing link sees. The
+ * editor, the fields and the photographs are the same, because they are the
+ * same job; what differs is the scope of the thing doing it. Three things
+ * follow from that and are enforced by the server rather than here — the event
+ * is fixed, its publishing state is fixed, and no other event exists. The form
+ * hides the controls it cannot use so that nobody is offered a button that
+ * would be refused, but hiding them is a courtesy, not the guard.
+ *
+ * One thing appears on the panel's side only: the version the last save
+ * replaced, and the offer to put it back. A link does not show it, for the same
+ * reason it cannot reach one — what an event said before somebody rewrote it is
+ * not theirs to read.
+ *
+ * Written as one component and not two because the alternative is two copies of
+ * a writing interface drifting apart, and the only thing anybody would notice
+ * about that is that one of them stops working.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ImagePlus, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { LazyMarkdownEditor, type MarkdownEditorHandle } from '@/components/LazyMarkdownEditor'
-import { fetchAllEvents, saveEvent, storeImage, type EventDraft } from '@/lib/data'
+import { LazyMarkdownEditor, type MarkdownEditorHandle } from './LazyMarkdownEditor'
+import { EventRevision } from './EventRevision'
+import { ShareLinks, ShareLinksPending } from './ShareLinks'
+import {
+  fetchAllEvents,
+  isLinkFinished,
+  openSharedEvent,
+  readPreviousVersion,
+  restorePreviousVersion,
+  saveEvent,
+  saveSharedEvent,
+  storeImage,
+  storeSharedImage,
+  type EventDraft,
+  type PreviousVersion,
+} from '@/lib/data'
 import { altFromFileName } from '@/lib/markdownEditor'
 import { deriveSummary, ROLE_LABEL, slugify, STATUS_LABEL } from '@/lib/format'
 import { useSite } from '@/lib/store'
@@ -22,6 +59,17 @@ const smallButton =
  * visible first, the one that takes the event off the site last.
  */
 const STATUSES: EventDraft['status'][] = ['published', 'draft', 'archived']
+
+/**
+ * What the state of an event means to somebody who was sent a link to write it
+ * up, and who cannot change it. Put in their terms rather than in the panel's,
+ * because the question they have is only whether their work is on the site yet.
+ */
+const STATE_NOTE: Record<EventDraft['status'], string> = {
+  published: 'The event is on the public site, so a save here is public as soon as it is saved.',
+  draft: 'The event is still a draft, so nothing written here is on the public site yet.',
+  archived: 'The event is kept in the library and off the public site.',
+}
 
 /**
  * What a set of form values looks like as one string.
@@ -78,9 +126,26 @@ function toDraft(e: EventRecord): EventDraft {
   }
 }
 
-export function AdminEventForm({ settings }: { settings: SiteSettings }) {
+/**
+ * `token` is a shared editing link, and its presence is what makes this page
+ * the writer's rather than the panel's.
+ *
+ * `onLinkFinished` is called when the server says the link no longer works —
+ * expired, taken back, or never real. That is not a failed save to be reported
+ * in a line above the form; it means the page is over, and only the page that
+ * put this form on screen can replace itself with something that says so.
+ */
+export function EventEditor({
+  settings,
+  token,
+  onLinkFinished,
+}: {
+  settings: SiteSettings
+  token?: string
+  onLinkFinished?: () => void
+}) {
   const { slug } = useParams<{ slug: string }>()
-  const isNew = !slug
+  const isNew = !slug && !token
   const navigate = useNavigate()
   const { reload } = useSite()
 
@@ -100,10 +165,29 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [uploading, setUploading] = useState<'cover' | 'gallery' | null>(null)
+  /**
+   * The version of this event that the last save replaced, if there is one.
+   *
+   * Read separately from the event itself because it answers a different
+   * question, and one only the panel asks: a link is not shown what the event
+   * said before its holder touched it, and the server would not answer if it
+   * asked.
+   */
+  const [previous, setPrevious] = useState<PreviousVersion | null>(null)
+  const [restoring, setRestoring] = useState(false)
   const coverInput = useRef<HTMLInputElement>(null)
   const galleryInput = useRef<HTMLInputElement>(null)
   /** The write-up, so a photograph in the gallery can be placed into it. */
   const writeUp = useRef<MarkdownEditorHandle>(null)
+  /**
+   * The page's way of reporting that the link this form was opened with is
+   * finished. Held in a ref so that the effect that loads the event depends on
+   * the link and not on the identity of a callback rebuilt on every render.
+   */
+  const linkFinished = useRef(onLinkFinished)
+  useEffect(() => {
+    linkFinished.current = onLinkFinished
+  }, [onLinkFinished])
 
   const categories = useMemo(() => {
     const set = new Set(settings.categories)
@@ -124,10 +208,18 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     }
     let alive = true
     setLoading(true)
-    void fetchAllEvents()
-      .then((all) => {
+    /*
+      Two ways in, one shape out. The panel reads the whole library and picks
+      its event out of it; a link asks for its own event by name, and the server
+      answers about that one row. Neither can see what the other sees, and it
+      matters that the second is not written as the first narrowed down.
+    */
+    const arriving: Promise<EventRecord | null> = token
+      ? openSharedEvent(token)
+      : fetchAllEvents().then((all) => all.find((e) => e.slug === slug) ?? null)
+    void arriving
+      .then((hit) => {
         if (!alive) return
-        const hit = all.find((e) => e.slug === slug)
         if (hit) {
           const loaded = toDraft(hit)
           setDraft(loaded)
@@ -137,8 +229,13 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
           setError('That event could not be found.')
         }
       })
-      .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : 'Loading failed.')
+      .catch((err: unknown) => {
+        if (!alive) return
+        if (token && isLinkFinished(err)) {
+          linkFinished.current?.()
+          return
+        }
+        setError(err instanceof Error ? err.message : 'Loading failed.')
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -146,7 +243,30 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     return () => {
       alive = false
     }
-  }, [slug, isNew])
+  }, [slug, isNew, token])
+
+  const readPrevious = useCallback(async () => {
+    if (token || !slug) {
+      setPrevious(null)
+      return
+    }
+    try {
+      setPrevious(await readPreviousVersion(slug))
+    } catch {
+      /*
+        A kept version that cannot be read is not worth a sentence of its own.
+        It is a copy of something already on screen, nothing about the form in
+        front of the reader depends on it, and a red line here would report a
+        failure of a feature nobody asked to use.
+      */
+      setPrevious(null)
+    }
+  }, [slug, token])
+
+  useEffect(() => {
+    setPrevious(null)
+    void readPrevious()
+  }, [readPrevious])
 
   function update<K extends keyof EventDraft>(key: K, value: EventDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
@@ -160,15 +280,30 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
     return draft.slug || slugify(draft.title) || 'event'
   }
 
+  /**
+   * Stores a photograph through whichever door this form was opened by.
+   *
+   * Both end in the same bucket and both come back as a URL; only the
+   * credential differs, and it differs because it has to — a link's upload is
+   * refused by the panel's door and the other way round.
+   */
+  function store(file: File, where: string): Promise<string> {
+    return token ? storeSharedImage(token, file, where) : storeImage(file, where)
+  }
+
   async function pickImage(file: File | undefined, target: 'cover' | 'gallery') {
     if (!file) return
     setUploading(target)
     setError(null)
     try {
-      const url = await storeImage(file, `${owner()}-${target}`)
+      const url = await store(file, `${owner()}-${target}`)
       if (target === 'cover') update('cover_image', url)
       else update('gallery', [...draft.gallery, url])
     } catch (err) {
+      if (token && isLinkFinished(err)) {
+        linkFinished.current?.()
+        return
+      }
       setError(err instanceof Error ? err.message : 'That image could not be processed.')
     } finally {
       setUploading(null)
@@ -199,20 +334,76 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
         under their hands.
       */
       const settled: EventDraft = { ...draft, slug: finalSlug }
-      await saveEvent({
-        ...settled,
-        summary: settled.summary.trim() || deriveSummary(settled.body),
-      })
+      const payload = { ...settled, summary: settled.summary.trim() || deriveSummary(settled.body) }
+      if (token) {
+        // What comes back is the row as it now stands, which is the only copy
+        // that is certainly right: the two things this form cannot decide —
+        // which event this is, and whether it is published — are the server's.
+        const stored = await saveSharedEvent(token, payload)
+        const after = toDraft(stored)
+        setDraft(after)
+        setSaved(fingerprint(after))
+        setNotice(`Saved. ${STATE_NOTE[after.status]}`)
+        return
+      }
+      await saveEvent(payload)
       await reload()
+      /*
+        Read back after every panel save, because a save moves the kept version
+        on: what is on screen now has just become the thing worth having, and
+        what was there before it is what the card should be offering.
+      */
+      await readPrevious()
       setNotice('Saved. The public site has been updated.')
       if (isNew) navigate(`/admin/events/${finalSlug}`, { replace: true })
       setSlugTouched(true)
       setDraft(settled)
       setSaved(fingerprint(settled))
     } catch (err) {
+      if (token && isLinkFinished(err)) {
+        linkFinished.current?.()
+        return
+      }
       setError(err instanceof Error ? err.message : 'That change could not be saved.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Puts the kept version back in place of what the event says now.
+   *
+   * Asked about first, because it overwrites the form as well as the record:
+   * anything written here and not saved is gone the moment it happens. The
+   * sentence says which of those two situations the reader is in, since the
+   * answer to "is this safe to press" is not the same for both.
+   *
+   * The server swaps the two versions rather than discarding one, so what is on
+   * screen now becomes the kept version as this one arrives. That is what makes
+   * this button safe enough to offer at all, and why the confirmation can say
+   * so instead of asking the reader to be sure.
+   */
+  async function restore() {
+    if (!slug) return
+    const question = unsaved
+      ? 'Put the kept version back? What is in the form now has not been saved, and it will be replaced.'
+      : 'Put the kept version back? What the event says now is kept in its place, so this can be undone the same way.'
+    if (!window.confirm(question)) return
+
+    setRestoring(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const back = toDraft(await restorePreviousVersion(slug))
+      setDraft(back)
+      setSaved(fingerprint(back))
+      await reload()
+      await readPrevious()
+      setNotice('The earlier version is back. The public site has been updated.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That version could not be put back.')
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -227,18 +418,25 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
   return (
     <form onSubmit={submit} className="pb-16">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link
-            to="/admin"
-            className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to the event library
-          </Link>
-          <h2 className="mt-3 text-xl font-semibold tracking-tight">
-            {isNew ? 'Create a new event' : 'Edit event'}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
+        {/*
+          The panel's way back, and its heading. Neither belongs on the page a
+          link opens: there is no library to go back to, and the only event is
+          the one already on screen.
+        */}
+        {!token && (
+          <div>
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" /> Back to the event library
+            </Link>
+            <h2 className="mt-3 text-xl font-semibold tracking-tight">
+              {isNew ? 'Create a new event' : 'Edit event'}
+            </h2>
+          </div>
+        )}
+        <div className={cn('flex flex-wrap items-center gap-3', token && 'ml-auto')}>
           {/*
             Standing beside the button that clears it. A write-up is edited
             over many screens, and walking away with a save outstanding used to
@@ -274,6 +472,20 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
         </p>
       )}
 
+      {/*
+        Panel only. The version this event held before its last save is the
+        administrator's to see and to put back; somebody writing through a link
+        is not shown what the event said before they touched it, and the server
+        would not answer them if they asked.
+      */}
+      {!token && previous && (
+        <EventRevision
+          revision={previous}
+          busy={restoring}
+          onRestore={() => void restore()}
+        />
+      )}
+
       <div className="mt-8 grid gap-10 lg:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
           <div>
@@ -296,14 +508,21 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
               <span className="text-sm text-muted-foreground">/events/</span>
               <input
                 id="slug"
-                className={input}
+                className={cn(input, token && 'bg-muted text-muted-foreground')}
                 value={draft.slug}
+                readOnly={Boolean(token)}
                 onChange={(e) => {
                   setSlugTouched(true)
                   update('slug', slugify(e.target.value))
                 }}
               />
             </div>
+            {token && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                The event’s address on the site. It is what this link was made for, so it is the one
+                thing here that cannot be changed.
+              </p>
+            )}
           </div>
 
           <div>
@@ -341,47 +560,60 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
         <div className="space-y-6">
           <div className={card}>
             <h3 className={cardTitle}>Publishing</h3>
-            <div className="mt-4 space-y-4">
-              <div>
-                <span className={label}>Status</span>
-                {/*
-                  All three at once, with the one in force lit. A dropdown hid
-                  the other two behind a click, which made a decision that
-                  matters — whether the event is on the site, off it, or not yet
-                  written — look like a piece of data entry.
-                */}
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Status">
-                  {STATUSES.map((value) => {
-                    const active = draft.status === value
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => update('status', value)}
-                        className={cn(
-                          'rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors',
-                          active
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-input bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                        )}
-                      >
-                        {STATUS_LABEL[value]}
-                      </button>
-                    )
-                  })}
+            {token ? (
+              /*
+                No control here, because there is nothing to control: a link
+                cannot publish, and offering the buttons anyway would only
+                produce a refusal. What the writer is owed instead is the answer
+                to the question they actually have — is my work on the site?
+              */
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                {STATE_NOTE[draft.status]} Whether this event appears on the public site is the
+                club’s decision, and not one this page can change either way.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <span className={label}>Status</span>
+                  {/*
+                    All three at once, with the one in force lit. A dropdown hid
+                    the other two behind a click, which made a decision that
+                    matters — whether the event is on the site, off it, or not yet
+                    written — look like a piece of data entry.
+                  */}
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Status">
+                    {STATUSES.map((value) => {
+                      const active = draft.status === value
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => update('status', value)}
+                          className={cn(
+                            'rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors',
+                            active
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-input bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                          )}
+                        >
+                          {STATUS_LABEL[value]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {draft.status === 'published'
+                      ? 'On the events list and reachable by its address.'
+                      : draft.status === 'draft'
+                        ? 'Held back until it is published, whatever its date.'
+                        : 'Kept in the library, off the events list.'}{' '}
+                    Which events the home page leads with is set on the Home page tab, not here.
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {draft.status === 'published'
-                    ? 'On the events list and reachable by its address.'
-                    : draft.status === 'draft'
-                      ? 'Held back until it is published, whatever its date.'
-                      : 'Kept in the library, off the events list.'}{' '}
-                  Which events the home page leads with is set on the Home page tab, not here.
-                </p>
               </div>
-            </div>
+            )}
           </div>
 
           <div className={card}>
@@ -587,6 +819,14 @@ export function AdminEventForm({ settings }: { settings: SiteSettings }) {
               </div>
             </div>
           </div>
+
+          {/*
+            Only for the panel, and only for an event that exists. A link is
+            addressed to a record, so there is nothing to make one for until
+            this event has been saved once — which is why the panel says that
+            rather than offering a button that would be refused.
+          */}
+          {!token && (isNew ? <ShareLinksPending /> : <ShareLinks slug={draft.slug} />)}
         </div>
       </div>
     </form>

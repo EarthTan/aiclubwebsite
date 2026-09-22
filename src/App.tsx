@@ -17,6 +17,11 @@ import { NotFound } from '@/pages/NotFound'
   use to a visitor reading about an event. Splitting it off keeps it out of the
   download every reader pays for, and costs a moment of waiting for the two
   people who actually administer the site.
+
+  The event form is now reached two ways — from the panel, and from a shared
+  editing link — so it is split off on its own rather than as part of the panel.
+  Whoever was sent a link has no business downloading the home page tab or the
+  settings tab to write a paragraph.
 */
 const AdminLayout = lazy(() =>
   import('@/pages/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })),
@@ -24,14 +29,17 @@ const AdminLayout = lazy(() =>
 const AdminEvents = lazy(() =>
   import('@/pages/admin/AdminEvents').then((m) => ({ default: m.AdminEvents })),
 )
-const AdminEventForm = lazy(() =>
-  import('@/pages/admin/AdminEventForm').then((m) => ({ default: m.AdminEventForm })),
-)
 const AdminHome = lazy(() =>
   import('@/pages/admin/AdminHome').then((m) => ({ default: m.AdminHome })),
 )
 const AdminSettings = lazy(() =>
   import('@/pages/admin/AdminSettings').then((m) => ({ default: m.AdminSettings })),
+)
+const EventEditor = lazy(() =>
+  import('@/components/EventEditor').then((m) => ({ default: m.EventEditor })),
+)
+const SharedEvent = lazy(() =>
+  import('@/pages/SharedEvent').then((m) => ({ default: m.SharedEvent })),
 )
 
 function Shell() {
@@ -70,10 +78,16 @@ function Shell() {
             <Route path="/events/:slug" element={<EventDetail events={events} />} />
             <Route path="/about" element={<About settings={settings} />} />
             <Route path="/history" element={<History settings={settings} />} />
+            {/*
+              A shared editing link. Not under `/admin`, and not behind the
+              key: it is its own door, and everything it reaches is decided by
+              the token in the address rather than by this browser.
+            */}
+            <Route path="/share/:token" element={<SharedEvent />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminEvents />} />
-              <Route path="events/new" element={<AdminEventForm settings={settings} />} />
-              <Route path="events/:slug" element={<AdminEventForm settings={settings} />} />
+              <Route path="events/new" element={<EventEditor settings={settings} />} />
+              <Route path="events/:slug" element={<EventEditor settings={settings} />} />
               <Route path="home" element={<AdminHome />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>

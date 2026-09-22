@@ -21,6 +21,30 @@ export function formatMonth(iso: string): string {
 }
 
 /**
+ * A moment, readable: `25 Sep 2026, 21:36`.
+ *
+ * Two shapes arrive here and both have to be understood. SQLite writes
+ * `2026-09-22 13:36:18` in UTC and says nothing about the zone; the server
+ * writes an expiry as `2026-09-25T13:36:18.138Z`, which carries it. The first
+ * is therefore marked as UTC before it is read, and the result is shown in the
+ * reader's own time — the only question ever asked of these times is when
+ * something happens for the person looking at it.
+ */
+export function formatMoment(value: string | null | undefined): string {
+  if (!value) return ''
+  const asUtc = /^\d{4}-\d{2}-\d{2} /.test(value) ? `${value.replace(' ', 'T')}Z` : value
+  const parsed = new Date(asUtc)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
  * How many words of a title a slug keeps.
  *
  * A slug is an address, not a summary. Left unbounded, a title that runs to a
