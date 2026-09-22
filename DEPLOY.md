@@ -141,7 +141,7 @@ database_name = "dku-ai-club"
 database_id = "3f2a…真实的一串字符…"
 ```
 
-把输出里的 `database_id` 复制下来，替换 `wrangler.jsonc` 第 33 行的占位符：
+把输出里的 `database_id` 复制下来，替换 `wrangler.jsonc` 中 `d1_databases` 的 `database_id`。如果仓库里那一处已经是真实 id，说明这台机器上的库早已创建过，这一步可以跳过。
 
 ```jsonc
 "d1_databases": [
@@ -157,6 +157,27 @@ database_id = "3f2a…真实的一串字符…"
 
 如果终端提示该数据库已存在，说明账号里已经有同名的库，改用现有那个：`npx wrangler d1 list` 可以看到它的 id，直接填进配置即可。
 
+### 创建命令之后的两个提问
+
+这条命令打印完配置之后紧接着会问两件事，两处都要留神。
+
+**第一个问「是否代为修改配置文件」。** 回答 yes 看着省事，实际会留下两个问题：自动写入的绑定名是从数据库名推导的（`dku_ai_club`），而 `cloudflare/worker.ts` 读的是 `env.DB`；并且它是往 `d1_databases` 列表里**追加**一条，原来那条带占位符 id 的记录一直留着——它指向一个并不存在的数据库，部署时会因为找不到这个库而失败。两种处理都可行：
+
+- 在这个提问上回答 no，随后手工把 `d1_databases` 改成一条，`binding` 为 `DB`、`database_id` 为真实值；
+- 或者回答 yes，再回头把追加进来的那条 `binding` 改回 `DB`，并删掉 id 仍是占位符的那条。
+
+判断是否改对了，用演习部署看一眼绑定名，不必等到真正发布：
+
+```bash
+npx wrangler deploy --dry-run --outdir /tmp/cf-dryrun
+```
+
+输出里应当出现 `env.DB (dku-ai-club)  D1 Database` 这一行。绑定名不对时，这里显示的就是错的那个名字。
+
+**第二个问「本地开发是否连到远程资源」。** 回答 **no**。本地开发用的是一份独立的本机数据库；连到远程意味着每次调试都直接读写线上数据。
+
+**一处副作用。** 本机开发库的文件名由 `database_id` 决定，所以配置从占位符换成真实 id 之后，`wrangler dev` 会去找一个全新的空库，之前在本机改过的正文和自建的事件都像是消失了。数据仍在 `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` 下，只是换了文件名：把旧文件复制成新名字即可恢复；也可以重跑 `npm run cf:db` 从种子文件重建，代价是丢掉只在后台建过、尚未写回种子的事件。
+
 ---
 
 ## 八、第六步：创建图片存储桶（R2）
@@ -165,7 +186,7 @@ database_id = "3f2a…真实的一串字符…"
 npx wrangler r2 bucket create dku-ai-club-images
 ```
 
-桶名必须与 `wrangler.jsonc` 里 `r2_buckets[0].bucket_name` 完全一致，否则部署时会报找不到存储桶。
+桶名必须与 `wrangler.jsonc` 里 `r2_buckets[0].bucket_name` 完全一致，否则部署时会报找不到存储桶。绑定名同理：代码里读的是 `env.IMAGES`，所以配置里 `binding` 必须是 `IMAGES`。
 
 确认创建成功：
 
@@ -174,6 +195,10 @@ npx wrangler r2 bucket list
 ```
 
 这条命令会列出账号里的存储桶，看到 `dku-ai-club-images` 即为成功。
+
+创建过程也会问第七节那两件事，处理方式相同：自动写入的绑定名是 `dku_ai_club_images` 而不是 `IMAGES`，而且同样会**追加**一条，导致同一个桶出现两条绑定（同名桶重复绑定会直接报错），所以回答 yes 之后要把追加进来的那条删掉、把原有那条的 `binding` 保留为 `IMAGES`。本地开发那一问依旧回答 no。
+
+如果这条命令报 `Please enable R2 through the Cloudflare Dashboard [code: 10042]`，说明 R2 还没在控制台开通，回到第五节完成开通与支付方式验证，然后重新执行。
 
 ---
 
@@ -273,6 +298,26 @@ Deployed dku-ai-club triggers
 
 按顺序走一遍，五项都通过就算上线完成。
 
+前四项可以先用命令过一遍，比开浏览器快，也更容易看出是哪一层出的问题：
+
+```bash
+BASE=https://你的域名
+
+curl -sS "$BASE/api/health"                       # 期望 {"ok":true,"events":12}
+curl -sS "$BASE/api/events" | head -c 200         # 公开列表，12 条且日期倒序
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  "$BASE/api/admin/events"                        # 期望 403，没带钥匙
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H 'x-site-key: wrong' "$BASE/api/admin/events" # 期望 403，钥匙不对
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H "x-site-key: $(cat cloudflare/.site-key.txt)" \
+  "$BASE/api/admin/events"                        # 期望 200，钥匙正确
+```
+
+`/api/health` 返回的 `events` 就是线上库里的条数，应当与第十节核对到的数字一致。`/api/settings` 返回 `{"settings":null}` 是正常的：站点设置表为空时，全站文案取自代码里的默认值。
+
+如果这些命令都通、浏览器却打不开，问题在域名或本地网络，不在站点本身——`.workers.dev` 免费地址在中国大陆无法访问，必须用已绑定的自有域名。
+
 1. **首页与事件页。** 打开域名，首页首屏轮播正常，`/#/events` 能看到 12 篇事件，点进任意一篇详情页正文完整、图集正常。
 2. **后台能进。** 打开 `https://<域名>/#/admin`，输入上一步确定的站点密钥，能进入事件库列表。密钥不对时会提示未被接受。
 3. **图片上传能用。** 在后台随便打开一篇事件，上传一张图片，保存后回到公开页面确认图片显示。这一步实际验证的是 R2 是否通了；如果失败，报错信息会指向存储桶，回去检查第五节的开通状态与第八节的桶名。
@@ -328,6 +373,10 @@ npx wrangler d1 execute dku-ai-club --remote --file cloudflare/seed.sql
 |---|---|---|
 | 部署时报找不到数据库 | `wrangler.jsonc` 里的 `database_id` 还是占位符 | 回到第七节，用真实 id 替换 |
 | 部署时报找不到存储桶 | 桶没建，或桶名与配置不一致 | 执行 `npx wrangler r2 bucket list` 核对名字 |
+| 创建存储桶报 `code: 10042` | R2 还没在控制台开通 | 回到第五节开通 R2 并完成支付方式验证 |
+| 部署时报绑定不存在，或站点能开但事件读不出来、后台保存一律失败 | 自动写入配置时绑定名用了 `dku_ai_club` / `dku_ai_club_images`，而 Worker 读的是 `DB` / `IMAGES` | 回到第七、八节，把 `binding` 改回 `DB` 与 `IMAGES`，用演习部署确认 |
+| 配置里同一个数据库或存储桶出现两条 | Wrangler 代为添加时是追加一条，带占位符的那条没被替换 | 删掉多余那条，只留绑定名正确的一条 |
+| 本地开发打开显示内置归档、后台看不到自建事件 | 换成真实 `database_id` 后本机库换了文件名，Wrangler 找的是一个新空库 | 按第七节的说明把旧文件复制成新名字，或重跑 `npm run cf:db` |
 | 首页能开，事件列表是空的 | 线上数据库没写入种子 | 回到第十节，重跑 `schema.sql` 与 `seed.sql` |
 | 页面能开但显示内置归档 | 数据库里一条已发布的事件都没有 | 同上；这是空库时的兜底显示 |
 | 图片上传失败 | R2 未开通，或支付方式未验证 | 回到第五节 |

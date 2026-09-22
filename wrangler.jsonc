@@ -20,28 +20,36 @@
   // and `/media/*` are reached.
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
   },
 
+  // The binding name is `DB` because that is the name `cloudflare/worker.ts`
+  // reads. Local development uses a separate local database, so this id only
+  // takes effect on deploy.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "dku-ai-club",
-      // A placeholder so `wrangler dev` can run against a local database
-      // without an account. `wrangler d1 create dku-ai-club` prints the real id
-      // to paste here before the first deploy.
-      "database_id": "00000000-0000-0000-0000-000000000000"
-    }
+      "database_id": "d75d35cd-20f9-4313-a725-0c1428123497",
+    },
   ],
 
+  // Likewise `IMAGES`: the name the Worker uses to reach uploaded photographs.
   "r2_buckets": [
     {
       "binding": "IMAGES",
-      "bucket_name": "dku-ai-club-images"
-    }
+      "bucket_name": "dku-ai-club-images",
+    },
   ],
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": false,
+    },
+  },
 }
